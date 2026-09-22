@@ -39,6 +39,14 @@ Consola de audio compacta para laptops:
 - **Modo 1:1 Lineal:** Elimina la aceleración artificial del puntero de Windows (`MouseSpeed = 0`), permitiendo apuntar a botones pequeños y texto con precisión milimétrica.
 - **Scroll Suave sin Inercia Loca:** Elimina la inercia fantasma del controlador Elantech (`SC_InertialScroll_Enable = 0`) para que el desplazamiento con dos dedos responda exactamente a la distancia recorrida y frene en seco al levantar los dedos.
 
+### 6. 🗺️ Optimizador de QGIS para Laptops (`Optimizar_QGIS.bat`)
+- **Arranque Instantáneo:** Desactiva comprobaciones de versión, descargas de noticias (`feed.qgis.org`) y verificación automática de complementos al abrir, reduciendo el tiempo de carga de minutos a ~5 segundos.
+- **Renderizado Multinúcleo:** Activa 3 hilos paralelos de CPU para mapas y rásters sin congelar Windows.
+- **Caché Ampliada en RAM:** Eleva la memoria caché de renderizado y mosaicos a **1024 MB** (1 GB).
+- **Aceleración GPU DirectX:** Configura prioridad de Alto Rendimiento en Windows para la GPU integrada.
+- **Iconos Compactos (16px):** Duplica el área visible del mapa en pantallas de resolución 1366x768.
+- **Alivio de Disco HDD:** Desactiva indexación pesada de archivos comprimidos en explorador de capas.
+
 ---
 
 ## 🛠️ Instalación Rápida
