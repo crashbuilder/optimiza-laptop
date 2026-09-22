@@ -1,11 +1,13 @@
 @echo off
 title Subir Optimiza Laptop a GitHub
 cd /d "%~dp0"
+set "PATH=C:\Users\Usuario\AppData\Local\Programs\gh;C:\Users\Usuario\AppData\Local\Programs\MinGit\cmd;%PATH%"
 
 echo =======================================================
 echo     Subir Suite "optimiza-laptop" a tu cuenta de GitHub
 echo =======================================================
 echo.
+
 
 gh auth status >nul 2>&1
 if %errorlevel% neq 0 (
