@@ -2,9 +2,11 @@
 # SCRIPT DE MANTENIMIENTO Y OPTIMIZACION PERIODICA (SUPERIOR A CCLEANER)
 # =====================================================================
 
-$logDir = "C:\Users\Usuario\Scripts"
+$logDir = $PSScriptRoot
+if (-not $logDir) { $logDir = Split-Path -Parent $MyInvocation.MyCommand.Definition }
 if (-not (Test-Path $logDir)) { New-Item -Path $logDir -ItemType Directory -Force | Out-Null }
 $logFile = "$logDir\Historial_Limpiezas.log"
+
 
 function Escribir-Log($texto) {
     $ts = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")

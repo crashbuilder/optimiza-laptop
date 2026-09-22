@@ -210,12 +210,35 @@ try {
 }
 
 # ---------------------------------------------------------------------
-# 7. REINICIO DE PROCESOS DE INTERFAZ
+# 7. REGISTRAR TAREA DE MANTENIMIENTO AUTOMATICO (LUNES 8AM O AL ENCENDER)
 # ---------------------------------------------------------------------
-Write-Host "[7/7] Aplicando cambios y reiniciando shell de Windows..." -ForegroundColor Cyan
+Write-Host "[7/8] Registrando tarea de mantenimiento semanal automatico..." -ForegroundColor Cyan
+try {
+    $scriptDir = Split-Path -Parent $PSCommandPath
+    $maintScript = "$scriptDir\Mantenimiento_Auto.ps1"
+    if (Test-Path $maintScript) {
+        $maintAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$maintScript`""
+        $maintTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At 08:00
+        $maintSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        $maintPrincipal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+
+        Register-ScheduledTask -TaskName "Mantenimiento_Semanal_Laptop" -Action $maintAction -Trigger $maintTrigger -Settings $maintSettings -Principal $maintPrincipal -Description "Mantenimiento automatico, TRIM en SSD y Punto de Restauracion semanal" -Force | Out-Null
+        Write-Host "  -> Tarea de mantenimiento semanal registrada con exito en Windows." -ForegroundColor Green
+    } else {
+        Write-Host "  -> Aviso: Script Mantenimiento_Auto.ps1 no encontrado en la misma carpeta." -ForegroundColor DarkGray
+    }
+} catch {
+    Write-Host "  -> Aviso en tarea: $($_.Exception.Message)" -ForegroundColor DarkYellow
+}
+
+# ---------------------------------------------------------------------
+# 8. REINICIO DE PROCESOS DE INTERFAZ
+# ---------------------------------------------------------------------
+Write-Host "[8/8] Aplicando cambios y reiniciando shell de Windows..." -ForegroundColor Cyan
 Stop-Process -Name "SearchHost", "StartMenuExperienceHost" -Force -ErrorAction SilentlyContinue
 Get-Process -Name "explorer" -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 2
+
 
 Write-Host ""
 Write-Host "=====================================================================" -ForegroundColor Green
