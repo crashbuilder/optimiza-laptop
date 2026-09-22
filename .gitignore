@@ -1,0 +1,18 @@
+# Logs y temporales
+*.log
+*.tmp
+*.bak
+*.txt
+
+# Archivos de depuracion y compilacion
+*.pdb
+*.suo
+*.user
+[Bb]in/
+[Oo]bj/
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
