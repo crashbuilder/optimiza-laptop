@@ -237,34 +237,63 @@ $rutasWer = @(
 $resWer = Purgar-Rutas $rutasWer
 Escribir-Log "[+] Informes de diagnostico eliminados: $($resWer.Archivos) archivos ($($resWer.MB) MB)" "Green"
 
-# 6. PAPELERA DE RECICLAJE
+# 6. PAPELERA DE RECICLAJE (TODAS LAS UNIDADES C:, D:, ETC.)
 Write-Host ""
-Write-Host "[6/9] Midiendo y vaciando Papelera de Reciclaje..." -ForegroundColor Cyan
+Write-Host "[6/9] Midiendo y vaciando Papelera de Reciclaje en todas las unidades..." -ForegroundColor Cyan
 $papeleraCount = 0
 $papeleraBytes = 0
+
 try {
-    $shell = New-Object -ComObject Shell.Application
-    $bin = $shell.Namespace(0xa)
-    $binItems = $bin.Items()
-    $papeleraCount = $binItems.Count
-    foreach ($item in $binItems) {
-        $papeleraBytes += $item.Size
+    Add-Type -MemberDefinition @'
+[DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+public static extern int SHEmptyRecycleBin(IntPtr hwnd, string pszRootPath, uint dwFlags);
+
+[DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+public static extern int SHQueryRecycleBin(string pszRootPath, ref SHQUERYRBINFO pSHQueryRBInfo);
+
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct SHQUERYRBINFO {
+    public int cbSize;
+    public long i64Size;
+    public long i64NumItems;
+}
+
+public static long[] ConsultarPapelera(string unidad) {
+    SHQUERYRBINFO info = new SHQUERYRBINFO();
+    info.cbSize = Marshal.SizeOf(typeof(SHQUERYRBINFO));
+    SHQueryRecycleBin(unidad, ref info);
+    return new long[] { info.i64NumItems, info.i64Size };
+}
+
+public static void VaciarTodo() {
+    // SHERB_NOCONFIRMATION = 1, SHERB_NOPROGRESSUI = 2, SHERB_NOSOUND = 4 -> 7
+    SHEmptyRecycleBin(IntPtr.Zero, null, 7);
+}
+'@ -Name "WinRecycleCore" -Namespace "WinAPI" -PassThru -ErrorAction SilentlyContinue | Out-Null
+
+    # Medir en todas las unidades fijas (C:, D:, etc.)
+    $unidades = Get-Volume | Where-Object { $_.DriveType -eq 'Fixed' -and $_.DriveLetter }
+    foreach ($u in $unidades) {
+        $letra = "$($u.DriveLetter):\"
+        $q = [WinAPI.WinRecycleCore]::ConsultarPapelera($letra)
+        $papeleraCount += $q[0]
+        $papeleraBytes += $q[1]
     }
-} catch {}
+    
+    # Vaciar en todo el sistema (todas las particiones) y actualizar icono de escritorio
+    [WinAPI.WinRecycleCore]::VaciarTodo()
+    Clear-RecycleBin -Force -Confirm:$false -ErrorAction SilentlyContinue
+} catch {
+    Clear-RecycleBin -Force -Confirm:$false -ErrorAction SilentlyContinue
+}
 
 $papeleraMB = [Math]::Round($papeleraBytes / 1MB, 2)
-
-try {
-    Clear-RecycleBin -Force -Confirm:$false -ErrorAction SilentlyContinue
-    if ($papeleraCount -gt 0) {
-        Escribir-Log "[+] Papelera vaciada: $papeleraCount elementos ($papeleraMB MB)" "Green"
-        $recycleStatus = "[OK] $papeleraCount elementos vaciados ($papeleraMB MB liberados)"
-    } else {
-        Escribir-Log "[+] Papelera de reciclaje se encontraba vacia (0 MB)." "Green"
-        $recycleStatus = "[OK] 0 elementos (ya se encontraba vacia)"
-    }
-} catch {
-    $recycleStatus = "[OK] Papelera de reciclaje procesada"
+if ($papeleraCount -gt 0) {
+    Escribir-Log "[+] Papelera vaciada en todos los discos: $papeleraCount elementos ($papeleraMB MB)" "Green"
+    $recycleStatus = "[OK] $papeleraCount elementos vaciados ($papeleraMB MB liberados)"
+} else {
+    Escribir-Log "[+] Papelera de reciclaje se encontraba vacia en todos los discos (0 MB)." "Green"
+    $recycleStatus = "[OK] 0 elementos (ya se encontraba vacia)"
 }
 
 # 7. ARCHIVOS DUPLICADOS EXACTOS (DESCARGAS Y ESCRITORIO)
