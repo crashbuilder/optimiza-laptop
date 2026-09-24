@@ -226,10 +226,8 @@ $tsFin = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
 Add-Content -Path $logFile -Value "[$tsFin] Mantenimiento finalizado: $totalArchivos archivos eliminados ($totalMB MB liberados)." -Encoding UTF8 -ErrorAction SilentlyContinue
 Add-Content -Path $logFile -Value "[$tsFin] === FIN DE MANTENIMIENTO ===`n" -Encoding UTF8 -ErrorAction SilentlyContinue
 
-# COPIAR LOG AL ESCRITORIO
-try {
-    Copy-Item -Path $logFile -Destination $desktopLogFile -Force -ErrorAction SilentlyContinue
-} catch {}
+# El historial tecnico se conserva en la carpeta de scripts para no saturar el escritorio
+# (En el escritorio solo se mantiene un unico reporte ejecutivo limpio)
 
 # GENERAR REPORTE RESUMIDO EN EL ESCRITORIO (UTF-8 legible)
 $reporteContent = @"
@@ -276,9 +274,9 @@ TOTALES DEL MANTENIMIENTO:
 * Rendimiento del sistema:      Optimo, rapido y calibrado
 
 ---------------------------------------------------------------------
-REGISTROS DISPONIBLES EN TU ESCRITORIO:
+REGISTRO DISPONIBLE EN TU ESCRITORIO:
 * Reporte Ejecutivo: $desktopReportFile
-* Historial Tecnico: $desktopLogFile
+* Historial Tecnico (carpeta interna): $logFile
 =====================================================================
 "@
 
