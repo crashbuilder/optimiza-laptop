@@ -10,10 +10,14 @@ Una colección de scripts y aplicaciones de escritorio desarrolladas a medida pa
 ### 1. 🧹 Mantenimiento Automático Profundo (`Mantenimiento_Auto.ps1`)
 Script integral que se puede ejecutar manualmente o programar semanalmente en Windows:
 - **Puntos de Restauración Reales:** Crea una instantánea del sistema (`Auto_Mantenimiento_YYYY-MM-DD`) antes de cada optimización.
-- **Limpieza de Basura:** Purga temporales del usuario, temporales del sistema, informes de errores WER y cachés pesadas de navegadores (sin tocar contraseñas ni sesiones activas).
+- **Desglose Detallado por Categorías:** Mide e informa individualmente archivos y MB liberados en temporales de usuario (`%TEMP%`, CrashDumps), temporales de Windows (`SoftwareDistribution`), caché web de navegadores, informes WER y papelera.
+- **Cronómetro de Alta Precisión:** Registra con precisión de centésimas de segundo la duración total del análisis y la limpieza.
+- **Eliminación Inteligente de Duplicados (SHA-256):** Escanea Descargas y Escritorio agrupando por tamaño y comparando hashes criptográficos SHA-256; conserva siempre el archivo original y purga automáticamente los clones redundantes (`(1)`, `- Copia`).
 - **Optimización TRIM para SSDs:** Ejecuta `Optimize-Volume -ReTrim` en la unidad C: para mantener las celdas del disco de estado sólido en máxima velocidad de lectura y escritura.
+- **Blindaje de Fondo de Pantalla:** Mantiene asegurado el modo imagen para evitar que optimizaciones de alto contraste o rendimiento fuercen pantallas negras.
 - **Búsqueda Instantánea sin Bing:** Desactiva la telemetría de Bing y las sugerencias remotas en el menú Inicio de Windows 11 (`DisableWebSearch = 1`), haciendo que la búsqueda de aplicaciones locales responda en milisegundos.
 - **Calibración Balística de Touchpad:** Mantiene la aceleración del ratón desactivada y el desplazamiento suave a 3 líneas.
+- **Reporte Ejecutivo Único:** Genera un único informe limpio en el Escritorio (`Reporte_Mantenimiento.txt`) y guarda los registros técnicos en una bitácora interna (`Historial_Limpiezas.log`).
 
 ### 2. 🖥️ Monitor de Hardware en Tiempo Real (`HWStatus`)
 Aplicación de escritorio estilo **HWMonitor / NZXT CAM** construida en C# WinForms con tema oscuro moderno:
