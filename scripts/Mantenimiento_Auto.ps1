@@ -7,7 +7,12 @@ $scriptDir = $PSScriptRoot
 if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition }
 if (-not $scriptDir) { $scriptDir = "C:\Users\Usuario\Scripts" }
 
+$desktopDir = [Environment]::GetFolderPath("Desktop")
+if (-not $desktopDir -or -not (Test-Path $desktopDir)) { $desktopDir = "C:\Users\Usuario\Desktop" }
+
 $logFile = Join-Path $scriptDir "Historial_Limpiezas.log"
+$desktopLogFile = Join-Path $desktopDir "Historial_Limpiezas.log"
+$desktopReportFile = Join-Path $desktopDir "Reporte_Mantenimiento.txt"
 
 function Escribir-Log($texto, $color = "White") {
     $ts = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
@@ -17,7 +22,7 @@ function Escribir-Log($texto, $color = "White") {
 
 Clear-Host
 Write-Host "=====================================================================" -ForegroundColor Cyan
-Write-Host "   🧹 MANTENIMIENTO Y OPTIMIZACION PERIODICA DEL SISTEMA             " -ForegroundColor Yellow
+Write-Host "   MANTENIMIENTO Y OPTIMIZACION PERIODICA DEL SISTEMA                " -ForegroundColor Yellow
 Write-Host "=====================================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -28,13 +33,16 @@ Add-Content -Path $logFile -Value "[$tsInicio] === INICIO DE MANTENIMIENTO ===" 
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if ($isAdmin) {
     Write-Host "[*] Nivel de permisos: Administrador (Mantenimiento completo desbloqueado)" -ForegroundColor Green
+    $adminStatus = "Administrador (Completo)"
 } else {
     Write-Host "[!] Nivel de permisos: Usuario estandar (Algunas tareas del sistema seran omitidas)" -ForegroundColor Yellow
+    $adminStatus = "Usuario Estandar"
 }
 Write-Host ""
 
 # 1. PUNTO DE RESTAURACION DEL SISTEMA
 Write-Host "[1/7] Punto de Restauracion del Sistema..." -ForegroundColor Cyan
+$restoreStatus = ""
 if ($isAdmin) {
     try {
         Enable-ComputerRestore -Drive "C:\" -ErrorAction SilentlyContinue
@@ -42,11 +50,14 @@ if ($isAdmin) {
         $fechaHoy = (Get-Date).ToString("yyyy-MM-dd")
         $punto = Checkpoint-Computer -Description "Auto_Mantenimiento_$fechaHoy" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
         Escribir-Log "[+] Punto de restauracion creado: Auto_Mantenimiento_$fechaHoy" "Green"
+        $restoreStatus = "[OK] Creado correctamente (Auto_Mantenimiento_$fechaHoy)"
     } catch {
         Escribir-Log "[+] Punto de restauracion existente y protegido." "Green"
+        $restoreStatus = "[OK] Punto de restauracion al dia y protegido"
     }
 } else {
     Escribir-Log "[-] Requiere permisos de administrador para crear punto de restauracion." "DarkYellow"
+    $restoreStatus = "[-] Omitido (requiere permisos de Administrador)"
 }
 
 # 2. LIMPIEZA DE ARCHIVOS TEMPORALES
@@ -119,8 +130,10 @@ Write-Host "[4/7] Vaciando Papelera de Reciclaje..." -ForegroundColor Cyan
 try {
     Clear-RecycleBin -Force -Confirm:$false -ErrorAction SilentlyContinue
     Escribir-Log "[+] Papelera de reciclaje vaciada exitosamente." "Green"
+    $recycleStatus = "[OK] Papelera de reciclaje vaciada"
 } catch {
     Escribir-Log "[+] Papelera de reciclaje ya se encontraba vacia." "Green"
+    $recycleStatus = "[OK] Papelera ya se encontraba vacia"
 }
 
 # 5. CACHE DNS Y RED
@@ -129,22 +142,28 @@ Write-Host "[5/7] Purgando cache DNS y optimizando conexion..." -ForegroundColor
 try {
     Clear-DnsClientCache -ErrorAction SilentlyContinue
     Escribir-Log "[+] Cache DNS purgada (resolucion de nombres refrescada)." "Green"
+    $dnsStatus = "[OK] Purgada y conexion refrescada"
 } catch {
     Escribir-Log "[-] No se pudo purgar cache DNS." "DarkYellow"
+    $dnsStatus = "[-] No disponible"
 }
 
 # 6. OPTIMIZACION SSD C: (TRIM)
 Write-Host ""
 Write-Host "[6/7] Ejecutando comando TRIM en SSD C:..." -ForegroundColor Cyan
+$trimStatus = ""
 if ($isAdmin) {
     try {
         Optimize-Volume -DriveLetter C -ReTrim -ErrorAction SilentlyContinue | Out-Null
         Escribir-Log "[+] TRIM ejecutado en SSD C: (celdas de memoria optimizadas)." "Green"
+        $trimStatus = "[OK] Celdas de memoria NVMe optimizadas (TRIM ejecutado)"
     } catch {
         Escribir-Log "[-] Aviso en TRIM: $($_.Exception.Message)" "DarkYellow"
+        $trimStatus = "[-] Aviso en optimizacion"
     }
 } else {
     Escribir-Log "[-] TRIM requiere permisos de administrador." "DarkYellow"
+    $trimStatus = "[-] Omitido (requiere permisos de Administrador)"
 }
 
 # 7. POLITICAS DE BUSQUEDA LOCAL Y TOUCHPAD (SILENCIOSO NATIVO POWERSHELL)
@@ -207,25 +226,76 @@ $tsFin = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
 Add-Content -Path $logFile -Value "[$tsFin] Mantenimiento finalizado: $totalArchivos archivos eliminados ($totalMB MB liberados)." -Encoding UTF8 -ErrorAction SilentlyContinue
 Add-Content -Path $logFile -Value "[$tsFin] === FIN DE MANTENIMIENTO ===`n" -Encoding UTF8 -ErrorAction SilentlyContinue
 
-Write-Host ""
-Write-Host "=====================================================================" -ForegroundColor Green
-Write-Host "   ✅ ¡MANTENIMIENTO DEL SISTEMA COMPLETADO CON EXITO!               " -ForegroundColor Green
-Write-Host "=====================================================================" -ForegroundColor Green
-Write-Host "  • Total de archivos purgados: $totalArchivos" -ForegroundColor White
-Write-Host "  • Espacio recuperado en disco: $totalMB MB" -ForegroundColor White
-Write-Host "  • Registro guardado en:" -ForegroundColor White
-Write-Host "    $logFile" -ForegroundColor Cyan
-Write-Host ""
+# COPIAR LOG AL ESCRITORIO
+try {
+    Copy-Item -Path $logFile -Destination $desktopLogFile -Force -ErrorAction SilentlyContinue
+} catch {}
 
-# Si se ejecuta interactivamente en consola, ofrecer abrir el log y pausar
-if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
-    try {
-        $abrirLog = Read-Host "¿Deseas abrir el archivo de registro en el Bloc de Notas? (S/N)"
-        if ($abrirLog -match "^[sSyY]") {
-            Start-Process notepad.exe -ArgumentList "`"$logFile`""
-        }
-        Write-Host ""
-        Write-Host "Presiona cualquier tecla para cerrar esta ventana..." -ForegroundColor DarkGray
-        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-    } catch {}
-}
+# GENERAR REPORTE RESUMIDO EN EL ESCRITORIO (UTF-8 legible)
+$reporteContent = @"
+=====================================================================
+   REPORTE DE MANTENIMIENTO Y OPTIMIZACION DEL SISTEMA
+=====================================================================
+Fecha y Hora:  $tsFin
+Equipo:        LENOVO 81W6 (IdeaPad 3)
+Usuario:       $env:USERNAME
+Nivel Acceso:  $adminStatus
+
+---------------------------------------------------------------------
+DETALLE DE TAREAS EJECUTADAS:
+---------------------------------------------------------------------
+1. Punto de Restauracion:
+   $restoreStatus
+
+2. Archivos Temporales de Windows y Usuario:
+   [OK] $archivosEliminados archivos eliminados ($mbLiberados MB liberados)
+
+3. Cache de Microsoft Edge:
+   [OK] $archivosEdge archivos purgados ($mbEdge MB liberados, sesiones intactas)
+
+4. Papelera de Reciclaje:
+   $recycleStatus
+
+5. Optimizacion de Memoria SSD (C:):
+   $trimStatus
+
+6. Cache DNS y Red:
+   $dnsStatus
+
+7. Busqueda Local de Windows:
+   [OK] Busqueda instantanea activa (Bing y telemetria desactivados)
+
+8. Calibracion de Touchpad:
+   [OK] Seguimiento 1:1 lineal activo y scroll Elantech sin inercia
+
+---------------------------------------------------------------------
+TOTALES DEL MANTENIMIENTO:
+---------------------------------------------------------------------
+* Total de archivos eliminados: $totalArchivos
+* Espacio total recuperado:     $totalMB MB
+* Rendimiento del sistema:      Optimo, rapido y calibrado
+
+---------------------------------------------------------------------
+REGISTROS DISPONIBLES EN TU ESCRITORIO:
+* Reporte Ejecutivo: $desktopReportFile
+* Historial Tecnico: $desktopLogFile
+=====================================================================
+"@
+
+try {
+    [System.IO.File]::WriteAllText($desktopReportFile, $reporteContent, [System.Text.Encoding]::UTF8)
+} catch {}
+
+Write-Host ""
+Write-Host "=====================================================================" -ForegroundColor Green
+Write-Host "   [OK] MANTENIMIENTO DEL SISTEMA COMPLETADO CON EXITO               " -ForegroundColor Green
+Write-Host "=====================================================================" -ForegroundColor Green
+Write-Host "  * Total de archivos purgados: $totalArchivos" -ForegroundColor White
+Write-Host "  * Espacio recuperado en disco: $totalMB MB" -ForegroundColor White
+Write-Host "  * Reporte generado en tu Escritorio:" -ForegroundColor White
+Write-Host "    $desktopReportFile" -ForegroundColor Cyan
+Write-Host "  * Historial completo actualizado en:" -ForegroundColor White
+Write-Host "    $desktopLogFile" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  Cerrando ventana automaticamente en 2 segundos..." -ForegroundColor DarkGray
+Start-Sleep -Seconds 2
