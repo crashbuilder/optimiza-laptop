@@ -12,5 +12,9 @@ if %errorlevel% neq 0 (
 )
 
 :: 2. Ejecutar rutina de mantenimiento (genera reporte en el Escritorio y se auto-cierra)
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Mantenimiento_Auto.ps1"
+if exist "%~dp0scripts\Mantenimiento_Auto.ps1" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Mantenimiento_Auto.ps1"
+) else (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Mantenimiento_Auto.ps1"
+)
 exit
