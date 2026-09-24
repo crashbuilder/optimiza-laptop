@@ -330,12 +330,12 @@ Add-Content -Path $logFile -Value "[$tsFin] === FIN DE MANTENIMIENTO ===`n" -Enc
 # CONSTRUIR SECCION DE DETALLE DE DUPLICADOS PARA EL REPORTE
 $duplicadosTexto = ""
 if ($resDuplicados.Detalles.Count -gt 0) {
-    $duplicadosTexto = "   • Archivos duplicados eliminados:" + "`r`n"
+    $duplicadosTexto = "   * Archivos duplicados eliminados:" + "`r`n"
     foreach ($item in $resDuplicados.Detalles) {
         $duplicadosTexto += "     - $item" + "`r`n"
     }
 } else {
-    $duplicadosTexto = "   • No se encontraron archivos duplicados redundantes." + "`r`n"
+    $duplicadosTexto = "   * No se encontraron archivos duplicados redundantes." + "`r`n"
 }
 
 # GENERAR REPORTE RESUMIDO EN EL ESCRITORIO
