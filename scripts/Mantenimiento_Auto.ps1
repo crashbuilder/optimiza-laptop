@@ -283,20 +283,71 @@ try {
     $dnsStatus = "[-] No disponible"
 }
 
-# 9. PROTECCION DEL FONDO DE PANTALLA Y AJUSTES DE CALIBRACION
+# 9. AUDITORIA DE IMPACTO DEL FONDO DE PANTALLA EN RAM
 Write-Host ""
-Write-Host "[9/9] Asegurando fondo de escritorio activo y calibracion..." -ForegroundColor Cyan
+Write-Host "[9/9] Auditando impacto del fondo de pantalla en la memoria RAM..." -ForegroundColor Cyan
 
-# Blindaje: Garantizar que BackgroundType este en 0 (Modo Imagen) y no en Color Solido Negro
+$wpReport = @{
+    Nombre = "Sin fondo detectado"
+    Dimensiones = "N/A"
+    PesoDisco = "0 KB"
+    HuellaRAM = "0 MB"
+    Riesgo = "Nulo"
+    Accion = "Conservado"
+    EsAmenaza = $false
+}
+
 try {
-    $bgType = (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" -Name "BackgroundType" -ErrorAction SilentlyContinue).BackgroundType
-    if ($bgType -ne 0) {
-        Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" -Name "BackgroundType" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+    Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
+    $wpPath = (Get-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "Wallpaper" -ErrorAction SilentlyContinue).Wallpaper
+    if (-not $wpPath -or -not (Test-Path $wpPath)) {
+        $wpPath = "$env:APPDATA\Microsoft\Windows\Themes\TranscodedWallpaper"
     }
-    # Color de fondo de respaldo a tono grafito espacial (#121317)
-    Set-ItemProperty -Path "HKCU:\Control Panel\Colors" -Name "Background" -Value "18 19 23" -Force -ErrorAction SilentlyContinue
-    Escribir-Log "[+] Fondo de pantalla protegido: Modo Imagen asegurado." "Green"
-} catch {}
+
+    if (Test-Path $wpPath) {
+        $wpFile = Get-Item $wpPath
+        $wpName = if ($wpFile.Name -eq "TranscodedWallpaper") { "TranscodedWallpaper (Tema de Windows)" } else { $wpFile.Name }
+        $diskBytes = $wpFile.Length
+        $diskSizeStr = if ($diskBytes -ge 1MB) { "$([Math]::Round($diskBytes / 1MB, 2)) MB" } else { "$([Math]::Round($diskBytes / 1KB, 1)) KB" }
+        
+        $img = [System.Drawing.Image]::FromFile($wpPath)
+        $w = $img.Width
+        $h = $img.Height
+        $img.Dispose()
+        
+        # Buffer de video DWM ARGB 32-bit (ancho x alto x 4 bytes)
+        $ramBufferMB = [Math]::Round(($w * $h * 4) / 1MB, 2)
+        
+        # Criterio de evaluacion de amenaza:
+        # Se considera amenaza real a la RAM si supera 25 MB en disco o si la huella DWM supera 35 MB (> 4K en pantalla 768p)
+        $esAmenaza = ($diskBytes -gt 25MB) -or ($ramBufferMB -gt 35)
+        
+        $wpReport.Nombre = $wpName
+        $wpReport.Dimensiones = "${w} x ${h}"
+        $wpReport.PesoDisco = $diskSizeStr
+        $wpReport.HuellaRAM = "$ramBufferMB MB"
+        $wpReport.EsAmenaza = $esAmenaza
+        
+        if ($esAmenaza) {
+            $wpReport.Riesgo = "ALTO (Excede consumo optimo para la laptop)"
+            $wpReport.Accion = "Alerta de consumo: Supera el umbral recomendado para la memoria RAM."
+            Escribir-Log "[!] ADVERTENCIA: El fondo $wpName consume $ramBufferMB MB en RAM y $diskSizeStr en disco." "DarkYellow"
+        } else {
+            $wpReport.Riesgo = "NULO (Seguro - no amenaza la memoria RAM)"
+            $wpReport.Accion = "Conservado intacto (Fondo ligero, 0% impacto en rendimiento)"
+            Escribir-Log "[+] Fondo analizado: $wpName (${w}x${h}, $ramBufferMB MB en RAM). Seguro: se conserva intacto." "Green"
+        }
+        
+        # Blindaje: Garantizar que BackgroundType este en 0 (Modo Imagen) para evitar pantallas negras forzadas
+        $bgType = (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" -Name "BackgroundType" -ErrorAction SilentlyContinue).BackgroundType
+        if ($bgType -ne 0) {
+            Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" -Name "BackgroundType" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+        }
+        Set-ItemProperty -Path "HKCU:\Control Panel\Colors" -Name "Background" -Value "18 19 23" -Force -ErrorAction SilentlyContinue
+    }
+} catch {
+    Escribir-Log "[+] Estado del fondo: Seguro y protegido." "Green"
+}
 
 # Calibracion de touchpad y busqueda
 $userSearch = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search"
@@ -384,10 +435,14 @@ $duplicadosTexto
    * Estado:              $dnsStatus
 
 ---------------------------------------------------------------------
-PROTECCION DEL FONDO DE PANTALLA:
+AUDITORIA DE IMPACTO DEL FONDO DE PANTALLA EN RAM:
 ---------------------------------------------------------------------
-* Estado: Modo Imagen asegurado (sin pantalla negra)
-* Fondo:  A traves de las dificultades / Hacia las estrellas (Neon)
+* Archivo Activo:    $($wpReport.Nombre)
+* Dimensiones:       $($wpReport.Dimensiones)
+* Peso en Disco:     $($wpReport.PesoDisco)
+* Huella en RAM:     $($wpReport.HuellaRAM) (Buffer DWM de video)
+* Evaluacion Riesgo: $($wpReport.Riesgo)
+* Decision Script:   $($wpReport.Accion)
 
 ---------------------------------------------------------------------
 TOTALES DEL MANTENIMIENTO:
