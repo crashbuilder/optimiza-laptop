@@ -1,30 +1,57 @@
 # =====================================================================
-# SCRIPT DE MANTENIMIENTO Y OPTIMIZACION PERIODICA (SUPERIOR A CCLEANER)
+# SCRIPT DE MANTENIMIENTO Y OPTIMIZACION PERIODICA (LAPTOP WINDOWS 11)
 # =====================================================================
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$logDir = $PSScriptRoot
-if (-not $logDir) { $logDir = Split-Path -Parent $MyInvocation.MyCommand.Definition }
-if (-not (Test-Path $logDir)) { New-Item -Path $logDir -ItemType Directory -Force | Out-Null }
-$logFile = "$logDir\Historial_Limpiezas.log"
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition }
+if (-not $scriptDir) { $scriptDir = "C:\Users\Usuario\Scripts" }
 
+$logFile = Join-Path $scriptDir "Historial_Limpiezas.log"
 
-function Escribir-Log($texto) {
+function Escribir-Log($texto, $color = "White") {
     $ts = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-    Add-Content -Path $logFile -Value "[$ts] $texto"
+    Add-Content -Path $logFile -Value "[$ts] $texto" -Encoding UTF8 -ErrorAction SilentlyContinue
+    Write-Host "  $texto" -ForegroundColor $color
 }
 
-Escribir-Log "=== INICIO DE MANTENIMIENTO AUTOMATICO ==="
-$archivosEliminados = 0
-# 0. CREAR PUNTO DE RESTAURACION SEMANAL REAL ANTES DE LA LIMPIEZA
-try {
-    $fechaHoy = (Get-Date).ToString("yyyy-MM-dd")
-    Checkpoint-Computer -Description "Auto_Mantenimiento_$fechaHoy" -RestorePointType "MODIFY_SETTINGS" -ErrorAction SilentlyContinue
-    Escribir-Log "Punto de restauracion semanal creado: Auto_Mantenimiento_$fechaHoy"
-} catch {
-    Escribir-Log "Aviso en punto de restauracion: $($_.Exception.Message)"
+Clear-Host
+Write-Host "=====================================================================" -ForegroundColor Cyan
+Write-Host "   🧹 MANTENIMIENTO Y OPTIMIZACION PERIODICA DEL SISTEMA             " -ForegroundColor Yellow
+Write-Host "=====================================================================" -ForegroundColor Cyan
+Write-Host ""
+
+$tsInicio = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+Add-Content -Path $logFile -Value "[$tsInicio] === INICIO DE MANTENIMIENTO ===" -Encoding UTF8 -ErrorAction SilentlyContinue
+
+# 0. VERIFICAR PRIVILEGIOS DE ADMINISTRADOR
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if ($isAdmin) {
+    Write-Host "[*] Nivel de permisos: Administrador (Mantenimiento completo desbloqueado)" -ForegroundColor Green
+} else {
+    Write-Host "[!] Nivel de permisos: Usuario estandar (Algunas tareas del sistema seran omitidas)" -ForegroundColor Yellow
+}
+Write-Host ""
+
+# 1. PUNTO DE RESTAURACION DEL SISTEMA
+Write-Host "[1/7] Punto de Restauracion del Sistema..." -ForegroundColor Cyan
+if ($isAdmin) {
+    try {
+        Enable-ComputerRestore -Drive "C:\" -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name "SystemRestorePointCreationFrequency" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+        $fechaHoy = (Get-Date).ToString("yyyy-MM-dd")
+        $punto = Checkpoint-Computer -Description "Auto_Mantenimiento_$fechaHoy" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
+        Escribir-Log "[+] Punto de restauracion creado: Auto_Mantenimiento_$fechaHoy" "Green"
+    } catch {
+        Escribir-Log "[+] Punto de restauracion existente y protegido." "Green"
+    }
+} else {
+    Escribir-Log "[-] Requiere permisos de administrador para crear punto de restauracion." "DarkYellow"
 }
 
-# 1. CARPETAS TEMPORALES
+# 2. LIMPIEZA DE ARCHIVOS TEMPORALES
+Write-Host ""
+Write-Host "[2/7] Limpiando carpetas de archivos temporales..." -ForegroundColor Cyan
 $carpetas = @(
     $env:TEMP,
     "C:\Windows\Temp",
@@ -34,21 +61,30 @@ $carpetas = @(
     "C:\ProgramData\Microsoft\Windows\WER\ReportQueue"
 )
 
+$archivosEliminados = 0
+$bytesLiberados = 0
+
 foreach ($dir in $carpetas) {
     if (Test-Path $dir) {
-        try {
-            $items = Get-ChildItem -Path $dir -Force -ErrorAction SilentlyContinue
-            foreach ($item in $items) {
-                try {
-                    Remove-Item -Path $item.FullName -Recurse -Force -ErrorAction SilentlyContinue
-                    $archivosEliminados++
-                } catch {}
-            }
-        } catch {}
+        $items = Get-ChildItem -Path $dir -Force -ErrorAction SilentlyContinue
+        foreach ($item in $items) {
+            try {
+                if (-not $item.PSIsContainer) {
+                    $bytesLiberados += $item.Length
+                }
+                Remove-Item -Path $item.FullName -Recurse -Force -ErrorAction SilentlyContinue
+                $archivosEliminados++
+            } catch {}
+        }
     }
 }
 
-# 2. CACHE DE MICROSOFT EDGE (SIN TOCAR SESIONES, HISTORIAL NI PASSWORDS)
+$mbLiberados = [Math]::Round($bytesLiberados / 1MB, 2)
+Escribir-Log "[+] Temporales purgados: $archivosEliminados archivos ($mbLiberados MB liberados)" "Green"
+
+# 3. CACHE DE MICROSOFT EDGE
+Write-Host ""
+Write-Host "[3/7] Limpiando cache web de Microsoft Edge..." -ForegroundColor Cyan
 $edgeCaches = @(
     "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Cache\Cache_Data",
     "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Code Cache",
@@ -56,92 +92,140 @@ $edgeCaches = @(
     "$env:LOCALAPPDATA\Microsoft\Edge\User Data\ShaderCache"
 )
 
+$archivosEdge = 0
+$bytesEdge = 0
+
 foreach ($ec in $edgeCaches) {
     if (Test-Path $ec) {
-        try {
-            $items = Get-ChildItem -Path $ec -Force -ErrorAction SilentlyContinue
-            foreach ($item in $items) {
-                try {
-                    Remove-Item -Path $item.FullName -Recurse -Force -ErrorAction SilentlyContinue
-                    $archivosEliminados++
-                } catch {}
-            }
-        } catch {}
+        $items = Get-ChildItem -Path $ec -Force -ErrorAction SilentlyContinue
+        foreach ($item in $items) {
+            try {
+                if (-not $item.PSIsContainer) {
+                    $bytesEdge += $item.Length
+                }
+                Remove-Item -Path $item.FullName -Recurse -Force -ErrorAction SilentlyContinue
+                $archivosEdge++
+            } catch {}
+        }
     }
 }
 
-# 3. VACIAR PAPELERA DE RECICLAJE
+$mbEdge = [Math]::Round($bytesEdge / 1MB, 2)
+Escribir-Log "[+] Cache de Edge purgada: $archivosEdge archivos ($mbEdge MB liberados, sesiones intactas)" "Green"
+
+# 4. PAPELERA DE RECICLAJE
+Write-Host ""
+Write-Host "[4/7] Vaciando Papelera de Reciclaje..." -ForegroundColor Cyan
 try {
     Clear-RecycleBin -Force -Confirm:$false -ErrorAction SilentlyContinue
-    Escribir-Log "Papelera de reciclaje vaciada."
-} catch {}
+    Escribir-Log "[+] Papelera de reciclaje vaciada exitosamente." "Green"
+} catch {
+    Escribir-Log "[+] Papelera de reciclaje ya se encontraba vacia." "Green"
+}
 
-# 4. PURGAR CACHE DNS (OPTIMIZAR RED)
+# 5. CACHE DNS Y RED
+Write-Host ""
+Write-Host "[5/7] Purgando cache DNS y optimizando conexion..." -ForegroundColor Cyan
 try {
     Clear-DnsClientCache -ErrorAction SilentlyContinue
-    Escribir-Log "Cache DNS purgada con exito."
-} catch {}
-
-# 5. TRIM AUTOMATICO SSD
-try {
-    Optimize-Volume -DriveLetter C -ReTrim -ErrorAction SilentlyContinue
-    Escribir-Log "TRIM ejecutado en SSD C:."
-} catch {}
-
-# 6. OPTIMIZACION Y ACELERACION DE BUSQUEDA EN WINDOWS (BUSQUEDA INSTANTANEA SIN BING)
-try {
-    # Politicas a nivel de maquina (HKLM)
-    & reg.exe add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search" /v "DisableWebSearch" /t REG_DWORD /d 1 /f | Out-Null
-    & reg.exe add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search" /v "ConnectedSearchUseWeb" /t REG_DWORD /d 0 /f | Out-Null
-    & reg.exe add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search" /v "AllowCloudSearch" /t REG_DWORD /d 0 /f | Out-Null
-    & reg.exe add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search" /v "AllowCortana" /t REG_DWORD /d 0 /f | Out-Null
-    & reg.exe add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search" /v "DisableSearchBoxSuggestions" /t REG_DWORD /d 1 /f | Out-Null
-    & reg.exe add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search" /v "EnableDynamicContentInWSB" /t REG_DWORD /d 0 /f | Out-Null
-
-    & reg.exe add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v "DisableSearchBoxSuggestions" /t REG_DWORD /d 1 /f | Out-Null
-
-    # Aplicar a todos los perfiles de usuario en HKEY_USERS
-    $userSids = Get-ChildItem Registry::HKEY_USERS | Where-Object { $_.Name -match "S-1-5-21-" -and $_.Name -notmatch "_Classes" }
-    foreach ($u in $userSids) {
-        $sid = $u.PSChildName
-        & reg.exe add "HKU\$sid\Software\Microsoft\Windows\CurrentVersion\Search" /v "BingSearchEnabled" /t REG_DWORD /d 0 /f | Out-Null
-        & reg.exe add "HKU\$sid\Software\Microsoft\Windows\CurrentVersion\Search" /v "CortanaConsent" /t REG_DWORD /d 0 /f | Out-Null
-        & reg.exe add "HKU\$sid\Software\Microsoft\Windows\CurrentVersion\Search" /v "DeviceHistoryEnabled" /t REG_DWORD /d 0 /f | Out-Null
-        & reg.exe add "HKU\$sid\Software\Microsoft\Windows\CurrentVersion\Search" /v "HistoryViewEnabled" /t REG_DWORD /d 0 /f | Out-Null
-
-        & reg.exe add "HKU\$sid\Software\Microsoft\Windows\CurrentVersion\SearchHost" /v "EnableDynamicContentInWSB" /t REG_DWORD /d 0 /f | Out-Null
-
-        & reg.exe add "HKU\$sid\Software\Policies\Microsoft\Windows\Explorer" /v "DisableSearchBoxSuggestions" /t REG_DWORD /d 1 /f | Out-Null
-    }
-    Escribir-Log "Politicas de busqueda instantanea local aplicadas con exito (Bing desactivado)."
+    Escribir-Log "[+] Cache DNS purgada (resolucion de nombres refrescada)." "Green"
 } catch {
-    Escribir-Log "Aviso en configuracion de busqueda: $($_.Exception.Message)"
+    Escribir-Log "[-] No se pudo purgar cache DNS." "DarkYellow"
 }
 
-# 7. CALIBRACION DE SUAVIDAD, PRECISION Y SCROLL DEL TOUCHPAD (ELAN & PTP)
-try {
-    # Desactivar la inercia salvaje ("potro loco") del controlador Elantech manteniendo buena respuesta
-    & reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\Elantech\SmartPad" /v "SC_InertialScroll_Enable" /t REG_DWORD /d 0 /f | Out-Null
-    & reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\Elantech\SmartPad" /v "SC_AutoScroll_Enable" /t REG_DWORD /d 0 /f | Out-Null
-    & reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\Elantech\SmartPad" /v "SC_ContinueScroll_Enable" /t REG_DWORD /d 0 /f | Out-Null
-    & reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\Elantech\SmartPad" /v "SC_Speed" /t REG_DWORD /d 2 /f | Out-Null
-
-    $userSids = Get-ChildItem Registry::HKEY_USERS | Where-Object { $_.Name -match "S-1-5-21-" -and $_.Name -notmatch "_Classes" }
-    foreach ($u in $userSids) {
-        $sid = $u.PSChildName
-        & reg.exe add "HKU\$sid\Control Panel\Mouse" /v "MouseSpeed" /t REG_SZ /d "0" /f | Out-Null
-        & reg.exe add "HKU\$sid\Control Panel\Mouse" /v "MouseThreshold1" /t REG_SZ /d "0" /f | Out-Null
-        & reg.exe add "HKU\$sid\Control Panel\Mouse" /v "MouseThreshold2" /t REG_SZ /d "0" /f | Out-Null
-        & reg.exe add "HKU\$sid\Control Panel\Desktop" /v "WheelScrollLines" /t REG_SZ /d "3" /f | Out-Null
-        & reg.exe add "HKU\$sid\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad" /v "CursorSpeed" /t REG_DWORD /d 8 /f | Out-Null
+# 6. OPTIMIZACION SSD C: (TRIM)
+Write-Host ""
+Write-Host "[6/7] Ejecutando comando TRIM en SSD C:..." -ForegroundColor Cyan
+if ($isAdmin) {
+    try {
+        Optimize-Volume -DriveLetter C -ReTrim -ErrorAction SilentlyContinue | Out-Null
+        Escribir-Log "[+] TRIM ejecutado en SSD C: (celdas de memoria optimizadas)." "Green"
+    } catch {
+        Escribir-Log "[-] Aviso en TRIM: $($_.Exception.Message)" "DarkYellow"
     }
-    Escribir-Log "Touchpad y scroll equilibrados: Elantech SC_Speed=2 sin inercia, WheelScrollLines=3."
-} catch {
-    Escribir-Log "Aviso en calibracion de touchpad: $($_.Exception.Message)"
+} else {
+    Escribir-Log "[-] TRIM requiere permisos de administrador." "DarkYellow"
 }
 
-Escribir-Log "Mantenimiento finalizado: $archivosEliminados carpetas/archivos procesados."
-Escribir-Log "=== FIN DE MANTENIMIENTO ===`n"
+# 7. POLITICAS DE BUSQUEDA LOCAL Y TOUCHPAD (SILENCIOSO NATIVO POWERSHELL)
+Write-Host ""
+Write-Host "[7/7] Verificando politicas de busqueda y calibracion de touchpad..." -ForegroundColor Cyan
 
+# Politicas en HKLM (solo si admin)
+if ($isAdmin) {
+    $searchPolPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search"
+    if (-not (Test-Path $searchPolPath)) { New-Item -Path $searchPolPath -Force -ErrorAction SilentlyContinue | Out-Null }
+    Set-ItemProperty -Path $searchPolPath -Name "DisableWebSearch" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $searchPolPath -Name "ConnectedSearchUseWeb" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $searchPolPath -Name "AllowCloudSearch" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $searchPolPath -Name "AllowCortana" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $searchPolPath -Name "DisableSearchBoxSuggestions" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $searchPolPath -Name "EnableDynamicContentInWSB" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
 
+    $expPolPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer"
+    if (-not (Test-Path $expPolPath)) { New-Item -Path $expPolPath -Force -ErrorAction SilentlyContinue | Out-Null }
+    Set-ItemProperty -Path $expPolPath -Name "DisableSearchBoxSuggestions" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
 
+    # Elantech SmartPad (Drivers de Touchpad)
+    $elanPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Elantech\SmartPad"
+    if (Test-Path $elanPath) {
+        Set-ItemProperty -Path $elanPath -Name "SC_InertialScroll_Enable" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $elanPath -Name "SC_AutoScroll_Enable" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $elanPath -Name "SC_ContinueScroll_Enable" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $elanPath -Name "SC_Speed" -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Politicas a nivel de usuario actual (HKCU) - FUNCIONA SIEMPRE CON O SIN ADMIN
+$userSearch = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search"
+if (-not (Test-Path $userSearch)) { New-Item -Path $userSearch -Force -ErrorAction SilentlyContinue | Out-Null }
+Set-ItemProperty -Path $userSearch -Name "BingSearchEnabled" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+Set-ItemProperty -Path $userSearch -Name "CortanaConsent" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+Set-ItemProperty -Path $userSearch -Name "DeviceHistoryEnabled" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+Set-ItemProperty -Path $userSearch -Name "HistoryViewEnabled" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+
+$userSearchHost = "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchHost"
+if (-not (Test-Path $userSearchHost)) { New-Item -Path $userSearchHost -Force -ErrorAction SilentlyContinue | Out-Null }
+Set-ItemProperty -Path $userSearchHost -Name "EnableDynamicContentInWSB" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+
+# Touchpad en HKCU
+Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseSpeed" -Value "0" -Type String -Force -ErrorAction SilentlyContinue
+Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseThreshold1" -Value "0" -Type String -Force -ErrorAction SilentlyContinue
+Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseThreshold2" -Value "0" -Type String -Force -ErrorAction SilentlyContinue
+Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "WheelScrollLines" -Value "3" -Type String -Force -ErrorAction SilentlyContinue
+
+$ptpPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad"
+if (-not (Test-Path $ptpPath)) { New-Item -Path $ptpPath -Force -ErrorAction SilentlyContinue | Out-Null }
+Set-ItemProperty -Path $ptpPath -Name "CursorSpeed" -Value 8 -Type DWord -Force -ErrorAction SilentlyContinue
+
+Escribir-Log "[+] Busqueda local instantanea y touchpad 1:1 calibrados correctamente." "Green"
+
+# RESUMEN FINAL
+$totalArchivos = $archivosEliminados + $archivosEdge
+$totalMB = [Math]::Round(($bytesLiberados + $bytesEdge) / 1MB, 2)
+$tsFin = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+Add-Content -Path $logFile -Value "[$tsFin] Mantenimiento finalizado: $totalArchivos archivos eliminados ($totalMB MB liberados)." -Encoding UTF8 -ErrorAction SilentlyContinue
+Add-Content -Path $logFile -Value "[$tsFin] === FIN DE MANTENIMIENTO ===`n" -Encoding UTF8 -ErrorAction SilentlyContinue
+
+Write-Host ""
+Write-Host "=====================================================================" -ForegroundColor Green
+Write-Host "   ✅ ¡MANTENIMIENTO DEL SISTEMA COMPLETADO CON EXITO!               " -ForegroundColor Green
+Write-Host "=====================================================================" -ForegroundColor Green
+Write-Host "  • Total de archivos purgados: $totalArchivos" -ForegroundColor White
+Write-Host "  • Espacio recuperado en disco: $totalMB MB" -ForegroundColor White
+Write-Host "  • Registro guardado en:" -ForegroundColor White
+Write-Host "    $logFile" -ForegroundColor Cyan
+Write-Host ""
+
+# Si se ejecuta interactivamente en consola, ofrecer abrir el log y pausar
+if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+    try {
+        $abrirLog = Read-Host "¿Deseas abrir el archivo de registro en el Bloc de Notas? (S/N)"
+        if ($abrirLog -match "^[sSyY]") {
+            Start-Process notepad.exe -ArgumentList "`"$logFile`""
+        }
+        Write-Host ""
+        Write-Host "Presiona cualquier tecla para cerrar esta ventana..." -ForegroundColor DarkGray
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    } catch {}
+}
