@@ -14,7 +14,7 @@ Script integral que se puede ejecutar manualmente o programar semanalmente en Wi
 - **Cronómetro de Alta Precisión:** Registra con precisión de centésimas de segundo la duración total del análisis y la limpieza.
 - **Eliminación Inteligente de Duplicados (SHA-256):** Escanea Descargas y Escritorio agrupando por tamaño y comparando hashes criptográficos SHA-256; conserva siempre el archivo original y purga automáticamente los clones redundantes (`(1)`, `- Copia`).
 - **Optimización TRIM para SSDs:** Ejecuta `Optimize-Volume -ReTrim` en la unidad C: para mantener las celdas del disco de estado sólido en máxima velocidad de lectura y escritura.
-- **Blindaje de Fondo de Pantalla:** Mantiene asegurado el modo imagen para evitar que optimizaciones de alto contraste o rendimiento fuercen pantallas negras.
+- **Auditoría Inteligente de Wallpaper en RAM:** Analiza en tiempo real las dimensiones y la huella en memoria de video/RAM del fondo activo; si es seguro y ligero (< 25 MB en disco y < 35 MB de búfer DWM), lo conserva intacto al 100% garantizando el modo imagen sin forzar pantallas negras.
 - **Búsqueda Instantánea sin Bing:** Desactiva la telemetría de Bing y las sugerencias remotas en el menú Inicio de Windows 11 (`DisableWebSearch = 1`), haciendo que la búsqueda de aplicaciones locales responda en milisegundos.
 - **Calibración Balística de Touchpad:** Mantiene la aceleración del ratón desactivada y el desplazamiento suave a 3 líneas.
 - **Reporte Ejecutivo Único:** Genera un único informe limpio en el Escritorio (`Reporte_Mantenimiento.txt`) y guarda los registros técnicos en una bitácora interna (`Historial_Limpiezas.log`).
