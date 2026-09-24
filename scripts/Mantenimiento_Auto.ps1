@@ -11,6 +11,24 @@
 # =====================================================================
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+# Desactivar QuickEdit Mode para que un clic accidental dentro de la consola NO pause la ejecucion
+try {
+    $kernel32 = Add-Type -MemberDefinition @'
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern IntPtr GetStdHandle(int nStdHandle);
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+'@ -Name "Win32ConsoleHelper" -Namespace "Win32Console" -PassThru -ErrorAction SilentlyContinue
+    $hStdin = [Win32Console.Win32ConsoleHelper]::GetStdHandle(-10) # STD_INPUT_HANDLE = -10
+    $mode = 0
+    if ([Win32Console.Win32ConsoleHelper]::GetConsoleMode($hStdin, [ref]$mode)) {
+        $newMode = $mode -band (-bnot 0x0040) # Quitar ENABLE_QUICK_EDIT_MODE (0x0040)
+        [Win32Console.Win32ConsoleHelper]::SetConsoleMode($hStdin, $newMode) | Out-Null
+    }
+} catch {}
+
 # Iniciar cronometro de duracion del analisis y mantenimiento
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
@@ -156,9 +174,18 @@ if ($isAdmin) {
         Enable-ComputerRestore -Drive "C:\" -ErrorAction SilentlyContinue
         Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name "SystemRestorePointCreationFrequency" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
         $fechaHoy = (Get-Date).ToString("yyyy-MM-dd")
-        $punto = Checkpoint-Computer -Description "Auto_Mantenimiento_$fechaHoy" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
-        Escribir-Log "[+] Punto de restauracion creado: Auto_Mantenimiento_$fechaHoy" "Green"
-        $restoreStatus = "[OK] Creado correctamente (Auto_Mantenimiento_$fechaHoy)"
+        
+        # Verificar si ya se creo un punto hoy para no demorar innecesariamente
+        $existente = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Where-Object { $_.Description -match $fechaHoy }
+        if ($existente) {
+            Escribir-Log "[+] Punto de restauracion al dia ($($existente[0].Description))." "Green"
+            $restoreStatus = "[OK] Punto de restauracion al dia ($($existente[0].Description))"
+        } else {
+            Write-Host "  -> Creando instantanea VSS del disco C: (toma ~30 seg, por favor espera)..." -ForegroundColor DarkCyan
+            $punto = Checkpoint-Computer -Description "Auto_Mantenimiento_$fechaHoy" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
+            Escribir-Log "[+] Punto de restauracion creado: Auto_Mantenimiento_$fechaHoy" "Green"
+            $restoreStatus = "[OK] Creado correctamente (Auto_Mantenimiento_$fechaHoy)"
+        }
     } catch {
         Escribir-Log "[+] Punto de restauracion existente y protegido." "Green"
         $restoreStatus = "[OK] Punto de restauracion al dia y protegido"
