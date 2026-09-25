@@ -5,10 +5,17 @@
 # - Desglose detallado de espacio liberado por categoria
 # - Cronometro exacto de duracion del analisis y ejecucion
 # - Deteccion y eliminacion de archivos duplicados exactos (SHA-256)
+# - Organizacion inteligente y automatica de la carpeta Descargas
 # - Proteccion absoluta del fondo de pantalla
 # - Reporte ejecutivo limpio en el Escritorio (1 solo archivo)
 # - Historial tecnico en carpeta interna
 # =====================================================================
+param(
+    [switch]$SoloOrganizarDescargas,
+    [switch]$OmitirOrganizarDescargas
+)
+
+$OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Desactivar QuickEdit Mode para que un clic accidental dentro de la consola NO pause la ejecucion
@@ -146,6 +153,226 @@ function Limpiar-Duplicados($carpetas) {
     }
 }
 
+# Funcion de organizacion inteligente de la carpeta de descargas
+function Organizar-Descargas {
+    param(
+        [string]$DownloadsPath = "$env:USERPROFILE\Downloads",
+        [switch]$Silencioso
+    )
+
+    if (-not (Test-Path $DownloadsPath)) {
+        return [PSCustomObject]@{
+            Total = 0
+            MB = 0
+            Desglose = @{}
+            Detalles = @()
+        }
+    }
+
+    $strA_acc = [char]0x00E1
+    $nomImagenes = "Im" + $strA_acc + "genes"
+    $nomDatosGeo = "Datos Geogr" + $strA_acc + "ficos"
+
+    # 1. Definir rutas de destino
+    $dirVideos       = Join-Path $DownloadsPath "Videos"
+    $dirImagenes     = Join-Path $DownloadsPath $nomImagenes
+    $dirDocumentos   = Join-Path $DownloadsPath "Documentos"
+
+    $dirWord         = Join-Path $dirDocumentos "Word"
+    $dirPdf          = Join-Path $dirDocumentos "PDF"
+    $dirExcel        = Join-Path $dirDocumentos "Excel"
+    $dirPowerPoint   = Join-Path $dirDocumentos "PowerPoint"
+    $dirGeo          = Join-Path $dirDocumentos $nomDatosGeo
+    $dirInstaladores = Join-Path $dirDocumentos "Instaladores"
+
+    $todasCarpetas = @(
+        $dirVideos, $dirImagenes, $dirDocumentos,
+        $dirWord, $dirPdf, $dirExcel, $dirPowerPoint,
+        $dirGeo, $dirInstaladores
+    )
+
+    foreach ($c in $todasCarpetas) {
+        if (-not (Test-Path $c)) {
+            New-Item -Path $c -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+        }
+    }
+
+    # 2. Unificar carpeta previa de Instaladores si existia en la raiz de Descargas
+    $dirInstaladoresLegacy = Join-Path $DownloadsPath "Instaladores"
+    if ((Test-Path $dirInstaladoresLegacy) -and ($dirInstaladoresLegacy -ne $dirInstaladores)) {
+        $itemLegacy = Get-Item $dirInstaladoresLegacy -Force -ErrorAction SilentlyContinue
+        $isJunction = ($itemLegacy.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+        if (-not $isJunction) {
+            $archivosLegacy = Get-ChildItem -Path $dirInstaladoresLegacy -File -Force -ErrorAction SilentlyContinue
+            foreach ($fl in $archivosLegacy) {
+                $targetFile = Join-Path $dirInstaladores $fl.Name
+                if (-not (Test-Path $targetFile)) {
+                    Move-Item -Path $fl.FullName -Destination $targetFile -Force -ErrorAction SilentlyContinue
+                }
+            }
+            $restantes = Get-ChildItem -Path $dirInstaladoresLegacy -Force -ErrorAction SilentlyContinue
+            if ($restantes.Count -eq 0) {
+                Remove-Item -Path $dirInstaladoresLegacy -Force -Recurse -ErrorAction SilentlyContinue
+                cmd.exe /c "mklink /J `"$dirInstaladoresLegacy`" `"$dirInstaladores`"" *>$null
+            }
+        }
+    }
+
+    # 3. Extensiones por categoria
+    $extVideos = @('.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.3gp', '.mpeg', '.mpg', '.ts')
+    $extImagenes = @('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.ico', '.tiff', '.tif', '.raw', '.cr2', '.nef', '.heic', '.psd')
+    $extWord = @('.docx', '.doc', '.docm', '.dotx', '.dot', '.odt', '.rtf')
+    $extPdf = @('.pdf')
+    $extExcel = @('.xlsx', '.xls', '.xlsm', '.xlsb', '.xltx', '.csv', '.tsv', '.ods')
+    $extPowerPoint = @('.pptx', '.ppt', '.pptm', '.potx', '.pot', '.ppsx', '.pps', '.odp')
+    $extInstaladores = @('.exe', '.msi', '.apk', '.iso', '.img', '.appx', '.msix', '.msixbundle')
+    $extGeo = @('.shp', '.shx', '.dbf', '.prj', '.cpg', '.sbn', '.sbx', '.fbn', '.fbx', '.ain', '.aih', '.ixs', '.mxs', '.atx', '.geojson', '.kml', '.kmz', '.gpkg', '.gdb', '.qgz', '.qgs', '.dem', '.asc', '.laz', '.las', '.ecw', '.sid')
+
+    $desglose = [ordered]@{
+        "Word"              = 0
+        "PDF"               = 0
+        "Excel"             = 0
+        "PowerPoint"        = 0
+        $nomDatosGeo        = 0
+        "Instaladores"      = 0
+        $nomImagenes        = 0
+        "Videos"            = 0
+    }
+    $totalMovidos = 0
+    $totalBytes = 0
+    $detalles = [System.Collections.Generic.List[string]]::new()
+
+    $archivosDescargas = Get-ChildItem -Path $DownloadsPath -File -Force -ErrorAction SilentlyContinue | Where-Object {
+        $_.Name -notmatch '^(desktop\.ini|thumbs\.db)$' -and
+        $_.Extension -notmatch '^\.(tmp|crdownload|part|download|partial)$'
+    }
+
+    foreach ($archivo in $archivosDescargas) {
+        $ext = $archivo.Extension.ToLower()
+        $nombre = $archivo.Name
+        $tamano = $archivo.Length
+        $carpetaDestino = $null
+        $categoriaNombre = $null
+
+        if ($ext -in $extWord) {
+            $carpetaDestino = $dirWord
+            $categoriaNombre = "Word"
+        } elseif ($ext -in $extPdf) {
+            $carpetaDestino = $dirPdf
+            $categoriaNombre = "PDF"
+        } elseif ($ext -in $extExcel) {
+            $carpetaDestino = $dirExcel
+            $categoriaNombre = "Excel"
+        } elseif ($ext -in $extPowerPoint) {
+            $carpetaDestino = $dirPowerPoint
+            $categoriaNombre = "PowerPoint"
+        } elseif ($ext -in $extInstaladores) {
+            $carpetaDestino = $dirInstaladores
+            $categoriaNombre = "Instaladores"
+        } elseif ($ext -in $extGeo) {
+            $carpetaDestino = $dirGeo
+            $categoriaNombre = $nomDatosGeo
+        } elseif ($ext -in $extVideos) {
+            $carpetaDestino = $dirVideos
+            $categoriaNombre = "Videos"
+        } elseif ($ext -in $extImagenes) {
+            $carpetaDestino = $dirImagenes
+            $categoriaNombre = $nomImagenes
+        } elseif ($ext -in @('.zip', '.rar', '.7z', '.tar', '.gz')) {
+            if ($nombre -match 'SHP_|VEREDAS|DEPTO|MPIO|GDB|RUNAP|IGAC|DANE|CORPOGUAJIRA|GEO|MAPA|CUENCA|CATASTRO|PREDIO|CARTOGRAFIA|SUELOS') {
+                $carpetaDestino = $dirGeo
+                $categoriaNombre = $nomDatosGeo
+            } else {
+                try {
+                    $tarOutput = (& tar.exe -tf $archivo.FullName 2>$null | Select-Object -First 15) -join "`n"
+                    if ($tarOutput -match '\.(shp|shx|dbf|prj|gpkg|kml|kmz|geojson)|\.gdb/') {
+                        $carpetaDestino = $dirGeo
+                        $categoriaNombre = $nomDatosGeo
+                    } elseif ($tarOutput -match '\.(jpg|jpeg|png|bmp|webp|tif|tiff)') {
+                        $carpetaDestino = $dirImagenes
+                        $categoriaNombre = $nomImagenes
+                    } elseif ($tarOutput -match '\.(exe|msi|apk)') {
+                        $carpetaDestino = $dirInstaladores
+                        $categoriaNombre = "Instaladores"
+                    }
+                } catch {}
+            }
+        }
+
+        if ($carpetaDestino -and (Test-Path $carpetaDestino)) {
+            $destinoFinal = Join-Path $carpetaDestino $nombre
+            try {
+                if (Test-Path $destinoFinal) {
+                    $hashOrig = (Get-FileHash -Path $archivo.FullName -Algorithm SHA256 -ErrorAction SilentlyContinue).Hash
+                    $hashDest = (Get-FileHash -Path $destinoFinal -Algorithm SHA256 -ErrorAction SilentlyContinue).Hash
+                    if ($hashOrig -and $hashDest -and ($hashOrig -eq $hashDest)) {
+                        Remove-Item -Path $archivo.FullName -Force -ErrorAction Stop
+                        $detalles.Add("$nombre -> Descartado clon redundante (ya existia en $categoriaNombre)")
+                    } else {
+                        $base = $archivo.BaseName
+                        $extOriginal = $archivo.Extension
+                        $idx = 1
+                        do {
+                            $nuevoNombre = "${base}_${idx}${extOriginal}"
+                            $destinoFinal = Join-Path $carpetaDestino $nuevoNombre
+                            $idx++
+                        } while (Test-Path $destinoFinal)
+
+                        Move-Item -Path $archivo.FullName -Destination $destinoFinal -Force -ErrorAction Stop
+                        $totalMovidos++
+                        $totalBytes += $tamano
+                        $desglose[$categoriaNombre]++
+                        $detalles.Add("$nombre -> $categoriaNombre (renombrado a $nuevoNombre)")
+                    }
+                } else {
+                    Move-Item -Path $archivo.FullName -Destination $destinoFinal -Force -ErrorAction Stop
+                    $totalMovidos++
+                    $totalBytes += $tamano
+                    $desglose[$categoriaNombre]++
+                    $detalles.Add("$nombre -> $categoriaNombre")
+                }
+            } catch {
+                if (-not $Silencioso) {
+                    Write-Host "  [-] Error al mover $($nombre): $($_.Exception.Message)" -ForegroundColor Red
+                }
+            }
+        }
+    }
+
+    $totalMB = [Math]::Round($totalBytes / 1MB, 2)
+    return [PSCustomObject]@{
+        Total    = $totalMovidos
+        Bytes    = $totalBytes
+        MB       = $totalMB
+        Desglose = $desglose
+        Detalles = $detalles
+    }
+}
+
+# Ejecucion exclusiva de organizacion de descargas si se solicito por parametro
+if ($SoloOrganizarDescargas) {
+    Clear-Host
+    Write-Host "=====================================================================" -ForegroundColor Cyan
+    Write-Host "   ORGANIZADOR INTELIGENTE DE CARPETA DE DESCARGAS                   " -ForegroundColor Yellow
+    Write-Host "=====================================================================" -ForegroundColor Cyan
+    Write-Host ""
+    $res = Organizar-Descargas
+    if ($res.Total -gt 0) {
+        Write-Host "[+] Se organizaron $($res.Total) archivos ($($res.MB) MB) exitosamente:" -ForegroundColor Green
+        foreach ($k in $res.Desglose.Keys) {
+            if ($res.Desglose[$k] -gt 0) {
+                Write-Host "    - $($k): $($res.Desglose[$k]) archivo(s)" -ForegroundColor White
+            }
+        }
+    } else {
+        Write-Host "[+] Tu carpeta de Descargas ya esta 100% limpia y organizada." -ForegroundColor Green
+    }
+    Write-Host ""
+    Write-Host "Cerrando ventana en 2 segundos..." -ForegroundColor DarkGray
+    Start-Sleep -Seconds 2
+    exit
+}
+
 Clear-Host
 Write-Host "=====================================================================" -ForegroundColor Cyan
 Write-Host "   MANTENIMIENTO, OPTIMIZACION Y LIMPIEZA INTELIGENTE                " -ForegroundColor Yellow
@@ -167,7 +394,7 @@ if ($isAdmin) {
 Write-Host ""
 
 # 1. PUNTO DE RESTAURACION
-Write-Host "[1/9] Punto de Restauracion del Sistema..." -ForegroundColor Cyan
+Write-Host "[1/10] Punto de Restauracion del Sistema..." -ForegroundColor Cyan
 $restoreStatus = ""
 if ($isAdmin) {
     try {
@@ -197,7 +424,7 @@ if ($isAdmin) {
 
 # 2. TEMPORALES DE USUARIO
 Write-Host ""
-Write-Host "[2/9] Analizando temporales de usuario..." -ForegroundColor Cyan
+Write-Host "[2/10] Analizando temporales de usuario..." -ForegroundColor Cyan
 $rutasTempUser = @(
     $env:TEMP,
     "$env:LOCALAPPDATA\CrashDumps"
@@ -207,7 +434,7 @@ Escribir-Log "[+] Temporales de usuario purgados: $($resTempUser.Archivos) archi
 
 # 3. TEMPORALES DEL SISTEMA (WINDOWS)
 Write-Host ""
-Write-Host "[3/9] Analizando temporales del sistema Windows..." -ForegroundColor Cyan
+Write-Host "[3/10] Analizando temporales del sistema Windows..." -ForegroundColor Cyan
 $rutasTempSys = @(
     "C:\Windows\Temp",
     "C:\Windows\SoftwareDistribution\Download"
@@ -217,7 +444,7 @@ Escribir-Log "[+] Temporales del sistema purgados: $($resTempSys.Archivos) archi
 
 # 4. CACHE DE NAVEGADORES (EDGE / WEB / SHADERS)
 Write-Host ""
-Write-Host "[4/9] Limpiando cache web y shaders de Microsoft Edge..." -ForegroundColor Cyan
+Write-Host "[4/10] Limpiando cache web y shaders de Microsoft Edge..." -ForegroundColor Cyan
 $rutasEdge = @(
     "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Cache\Cache_Data",
     "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Code Cache",
@@ -229,7 +456,7 @@ Escribir-Log "[+] Cache web purgada: $($resEdge.Archivos) archivos ($($resEdge.M
 
 # 5. INFORMES DE ERROR Y DIAGNOSTICO (WER)
 Write-Host ""
-Write-Host "[5/9] Limpiando informes de diagnostico y reportes WER..." -ForegroundColor Cyan
+Write-Host "[5/10] Limpiando informes de diagnostico y reportes WER..." -ForegroundColor Cyan
 $rutasWer = @(
     "C:\ProgramData\Microsoft\Windows\WER\ReportArchive",
     "C:\ProgramData\Microsoft\Windows\WER\ReportQueue"
@@ -239,7 +466,7 @@ Escribir-Log "[+] Informes de diagnostico eliminados: $($resWer.Archivos) archiv
 
 # 6. PAPELERA DE RECICLAJE (TODAS LAS UNIDADES C:, D:, ETC.)
 Write-Host ""
-Write-Host "[6/9] Midiendo y vaciando Papelera de Reciclaje en todas las unidades..." -ForegroundColor Cyan
+Write-Host "[6/10] Midiendo y vaciando Papelera de Reciclaje en todas las unidades..." -ForegroundColor Cyan
 $papeleraCount = 0
 $papeleraBytes = 0
 
@@ -298,7 +525,7 @@ if ($papeleraCount -gt 0) {
 
 # 7. ARCHIVOS DUPLICADOS EXACTOS (DESCARGAS Y ESCRITORIO)
 Write-Host ""
-Write-Host "[7/9] Escaneando y eliminando archivos duplicados redundantes..." -ForegroundColor Cyan
+Write-Host "[7/10] Escaneando y eliminando archivos duplicados redundantes..." -ForegroundColor Cyan
 $carpetasEscaneo = @(
     "$env:USERPROFILE\Downloads",
     $desktopDir
@@ -313,9 +540,34 @@ if ($resDuplicados.Archivos -gt 0) {
     Escribir-Log "[+] Sin archivos duplicados redundantes (0 MB)." "Green"
 }
 
-# 8. OPTIMIZACION SSD C: (TRIM) Y RED DNS
+# 8. ORGANIZACION INTELIGENTE DE DESCARGAS RECIENTES
 Write-Host ""
-Write-Host "[8/9] Optimizando celdas SSD (TRIM) y purgando cache DNS..." -ForegroundColor Cyan
+Write-Host "[8/10] Clasificando y organizando descargas recientes en carpetas tematicas..." -ForegroundColor Cyan
+$orgDescargasStatus = ""
+$resOrganizacion = [PSCustomObject]@{ Total = 0; MB = 0; Desglose = @{}; Detalles = @() }
+
+if (-not $OmitirOrganizarDescargas) {
+    $resOrganizacion = Organizar-Descargas -Silencioso
+    if ($resOrganizacion.Total -gt 0) {
+        Escribir-Log "[+] Descargas organizadas: $($resOrganizacion.Total) archivos ($($resOrganizacion.MB) MB clasificados)." "Green"
+        foreach ($cat in $resOrganizacion.Desglose.Keys) {
+            if ($resOrganizacion.Desglose[$cat] -gt 0) {
+                Escribir-Log "    -> $($cat): $($resOrganizacion.Desglose[$cat]) archivo(s)" "DarkCyan"
+            }
+        }
+        $orgDescargasStatus = "[OK] $($resOrganizacion.Total) archivos ordenados ($($resOrganizacion.MB) MB clasificados)"
+    } else {
+        Escribir-Log "[+] Carpeta de Descargas al dia (0 archivos pendientes por clasificar)." "Green"
+        $orgDescargasStatus = "[OK] Al dia (previamente organizada y limpia)"
+    }
+} else {
+    Escribir-Log "[-] Organizacion de descargas omitida por parametro." "DarkYellow"
+    $orgDescargasStatus = "[-] Omitida por parametro"
+}
+
+# 9. OPTIMIZACION SSD C: (TRIM) Y RED DNS
+Write-Host ""
+Write-Host "[9/10] Optimizando celdas SSD (TRIM) y purgando cache DNS..." -ForegroundColor Cyan
 $trimStatus = ""
 if ($isAdmin) {
     try {
@@ -339,9 +591,9 @@ try {
     $dnsStatus = "[-] No disponible"
 }
 
-# 9. AUDITORIA DE IMPACTO DEL FONDO DE PANTALLA EN RAM
+# 10. AUDITORIA DE IMPACTO DEL FONDO DE PANTALLA EN RAM
 Write-Host ""
-Write-Host "[9/9] Auditando impacto del fondo de pantalla en la memoria RAM..." -ForegroundColor Cyan
+Write-Host "[10/10] Auditando impacto del fondo de pantalla en la memoria RAM..." -ForegroundColor Cyan
 
 $wpReport = @{
     Nombre = "Sin fondo detectado"
@@ -445,6 +697,19 @@ if ($resDuplicados.Detalles.Count -gt 0) {
     $duplicadosTexto = "   * No se encontraron archivos duplicados redundantes." + "`r`n"
 }
 
+# CONSTRUIR SECCION DE DETALLE DE ORGANIZACION DE DESCARGAS
+$orgDescargasTexto = ""
+if ($resOrganizacion.Total -gt 0) {
+    $orgDescargasTexto = "   * Desglose por categorias:" + "`r`n"
+    foreach ($cat in $resOrganizacion.Desglose.Keys) {
+        if ($resOrganizacion.Desglose[$cat] -gt 0) {
+            $orgDescargasTexto += "     - $($cat): $($resOrganizacion.Desglose[$cat]) archivo(s)" + "`r`n"
+        }
+    }
+} else {
+    $orgDescargasTexto = "   * Carpeta Descargas al dia (sin archivos pendientes por ordenar)." + "`r`n"
+}
+
 # GENERAR REPORTE RESUMIDO EN EL ESCRITORIO
 $reporteContent = @"
 =====================================================================
@@ -484,10 +749,14 @@ DESGLOSE DETALLADO POR CATEGORIA:
    * Clones eliminados:   $($resDuplicados.Archivos) (conservando siempre el original)
    * Espacio liberado:    $($resDuplicados.MB) MB
 $duplicadosTexto
-7. Optimizacion de Memoria SSD (C:):
+7. Organizacion Inteligente de Descargas Recientes:
+   * Estado:              $orgDescargasStatus
+   * Archivos ordenados:  $($resOrganizacion.Total) archivos ($($resOrganizacion.MB) MB)
+$orgDescargasTexto
+8. Optimizacion de Memoria SSD (C:):
    * Estado:              $trimStatus
 
-8. Resolucion DNS y Red:
+9. Resolucion DNS y Red:
    * Estado:              $dnsStatus
 
 ---------------------------------------------------------------------
@@ -528,6 +797,7 @@ Write-Host "  * Duracion del analisis y limpieza: $tiempoTexto" -ForegroundColor
 Write-Host "  * Espacio total recuperado:         $totalMB MB ($totalGB GB)" -ForegroundColor White
 Write-Host "  * Total de archivos eliminados:     $totalArchivos" -ForegroundColor White
 Write-Host "  * Clones duplicados eliminados:     $($resDuplicados.Archivos) ($($resDuplicados.MB) MB)" -ForegroundColor White
+Write-Host "  * Descargas clasificadas:           $($resOrganizacion.Total) archivos ($($resOrganizacion.MB) MB)" -ForegroundColor White
 Write-Host "  * Reporte actualizado en tu Escritorio:" -ForegroundColor White
 Write-Host "    $desktopReportFile" -ForegroundColor Cyan
 Write-Host ""
