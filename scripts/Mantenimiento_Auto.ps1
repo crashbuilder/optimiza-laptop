@@ -339,13 +339,44 @@ function Organizar-Descargas {
         }
     }
 
+    # 7. Censo total de archivos organizados por carpeta
+    $censoCarpetas = [ordered]@{
+        "Documentos\Word"              = @{ Ruta = $dirWord;         Archivos = 0; MB = 0 }
+        "Documentos\PDF"               = @{ Ruta = $dirPdf;          Archivos = 0; MB = 0 }
+        "Documentos\Excel"             = @{ Ruta = $dirExcel;        Archivos = 0; MB = 0 }
+        "Documentos\PowerPoint"        = @{ Ruta = $dirPowerPoint;   Archivos = 0; MB = 0 }
+        "Documentos\Datos Geograficos" = @{ Ruta = $dirGeo;          Archivos = 0; MB = 0 }
+        "Documentos\Instaladores"      = @{ Ruta = $dirInstaladores; Archivos = 0; MB = 0 }
+        "Imagenes"                     = @{ Ruta = $dirImagenes;     Archivos = 0; MB = 0 }
+        "Videos"                       = @{ Ruta = $dirVideos;       Archivos = 0; MB = 0 }
+    }
+    
+    $totalExistentes = 0
+    $totalExistentesBytes = 0
+    foreach ($k in $censoCarpetas.Keys) {
+        $p = $censoCarpetas[$k].Ruta
+        if (Test-Path $p) {
+            $fls = Get-ChildItem -Path $p -File -Force -ErrorAction SilentlyContinue
+            $cnt = $fls.Count
+            $bts = ($fls | Measure-Object -Property Length -Sum).Sum
+            if (-not $bts) { $bts = 0 }
+            $censoCarpetas[$k].Archivos = $cnt
+            $censoCarpetas[$k].MB = [Math]::Round($bts / 1MB, 2)
+            $totalExistentes += $cnt
+            $totalExistentesBytes += $bts
+        }
+    }
+
     $totalMB = [Math]::Round($totalBytes / 1MB, 2)
     return [PSCustomObject]@{
-        Total    = $totalMovidos
-        Bytes    = $totalBytes
-        MB       = $totalMB
-        Desglose = $desglose
-        Detalles = $detalles
+        Total           = $totalMovidos
+        Bytes           = $totalBytes
+        MB              = $totalMB
+        Desglose        = $desglose
+        Detalles        = $detalles
+        Censo           = $censoCarpetas
+        TotalExistentes = $totalExistentes
+        MBExistentes    = [Math]::Round($totalExistentesBytes / 1MB, 2)
     }
 }
 
@@ -544,21 +575,29 @@ if ($resDuplicados.Archivos -gt 0) {
 Write-Host ""
 Write-Host "[8/10] Clasificando y organizando descargas recientes en carpetas tematicas..." -ForegroundColor Cyan
 $orgDescargasStatus = ""
-$resOrganizacion = [PSCustomObject]@{ Total = 0; MB = 0; Desglose = @{}; Detalles = @() }
+$resOrganizacion = [PSCustomObject]@{ Total = 0; MB = 0; Desglose = @{}; Detalles = @(); Censo = @{}; TotalExistentes = 0; MBExistentes = 0 }
 
 if (-not $OmitirOrganizarDescargas) {
     $resOrganizacion = Organizar-Descargas -Silencioso
     if ($resOrganizacion.Total -gt 0) {
-        Escribir-Log "[+] Descargas organizadas: $($resOrganizacion.Total) archivos ($($resOrganizacion.MB) MB clasificados)." "Green"
+        Escribir-Log "[+] Descargas nuevas clasificadas: $($resOrganizacion.Total) archivos ($($resOrganizacion.MB) MB movidos)." "Green"
         foreach ($cat in $resOrganizacion.Desglose.Keys) {
             if ($resOrganizacion.Desglose[$cat] -gt 0) {
                 Escribir-Log "    -> $($cat): $($resOrganizacion.Desglose[$cat]) archivo(s)" "DarkCyan"
             }
         }
-        $orgDescargasStatus = "[OK] $($resOrganizacion.Total) archivos ordenados ($($resOrganizacion.MB) MB clasificados)"
+        $orgDescargasStatus = "[OK] $($resOrganizacion.Total) archivos nuevos clasificados ($($resOrganizacion.MB) MB)"
     } else {
-        Escribir-Log "[+] Carpeta de Descargas al dia (0 archivos pendientes por clasificar)." "Green"
-        $orgDescargasStatus = "[OK] Al dia (previamente organizada y limpia)"
+        Escribir-Log "[+] Carpeta de Descargas al dia (sin archivos pendientes en la raiz)." "Green"
+        $orgDescargasStatus = "[OK] Al dia (sin descargas pendientes en raiz)"
+    }
+    
+    # Mostrar censo actual por carpeta en consola
+    Write-Host "  * Censo de archivos organizados en Descargas ($($resOrganizacion.TotalExistentes) archivos en total):" -ForegroundColor Cyan
+    foreach ($cat in $resOrganizacion.Censo.Keys) {
+        $cArch = $resOrganizacion.Censo[$cat].Archivos
+        $cMB = $resOrganizacion.Censo[$cat].MB
+        Write-Host "    - $($cat): $cArch archivo(s) ($cMB MB)" -ForegroundColor Gray
     }
 } else {
     Escribir-Log "[-] Organizacion de descargas omitida por parametro." "DarkYellow"
@@ -698,16 +737,27 @@ if ($resDuplicados.Detalles.Count -gt 0) {
 }
 
 # CONSTRUIR SECCION DE DETALLE DE ORGANIZACION DE DESCARGAS
+$censoTexto = ""
+if ($resOrganizacion.Censo -and $resOrganizacion.Censo.Count -gt 0) {
+    $censoTexto = "   * Total de archivos organizados en Descargas: $($resOrganizacion.TotalExistentes) archivos ($($resOrganizacion.MBExistentes) MB)" + "`r`n"
+    $censoTexto += "   * Censo y distribucion actual por carpeta:" + "`r`n"
+    foreach ($cat in $resOrganizacion.Censo.Keys) {
+        $cArch = $resOrganizacion.Censo[$cat].Archivos
+        $cMB = $resOrganizacion.Censo[$cat].MB
+        $censoTexto += "     - $($cat): $cArch archivo(s) ($cMB MB)" + "`r`n"
+    }
+}
+
 $orgDescargasTexto = ""
 if ($resOrganizacion.Total -gt 0) {
-    $orgDescargasTexto = "   * Desglose por categorias:" + "`r`n"
+    $orgDescargasTexto = "   * Archivos nuevos clasificados en esta sesion ($($resOrganizacion.Total) movidos):" + "`r`n"
     foreach ($cat in $resOrganizacion.Desglose.Keys) {
         if ($resOrganizacion.Desglose[$cat] -gt 0) {
-            $orgDescargasTexto += "     - $($cat): $($resOrganizacion.Desglose[$cat]) archivo(s)" + "`r`n"
+            $orgDescargasTexto += "     + $($cat): $($resOrganizacion.Desglose[$cat]) archivo(s) nuevo(s)" + "`r`n"
         }
     }
 } else {
-    $orgDescargasTexto = "   * Carpeta Descargas al dia (sin archivos pendientes por ordenar)." + "`r`n"
+    $orgDescargasTexto = "   * Descargas al dia (no hubo archivos nuevos pendientes en la raiz)." + "`r`n"
 }
 
 # GENERAR REPORTE RESUMIDO EN EL ESCRITORIO
@@ -751,8 +801,7 @@ DESGLOSE DETALLADO POR CATEGORIA:
 $duplicadosTexto
 7. Organizacion Inteligente de Descargas Recientes:
    * Estado:              $orgDescargasStatus
-   * Archivos ordenados:  $($resOrganizacion.Total) archivos ($($resOrganizacion.MB) MB)
-$orgDescargasTexto
+$censoTexto$orgDescargasTexto
 8. Optimizacion de Memoria SSD (C:):
    * Estado:              $trimStatus
 

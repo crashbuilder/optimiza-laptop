@@ -223,38 +223,71 @@ function Invoke-OrganizarDescargas {
         }
     }
 
+    # 7. Censo total de archivos organizados por carpeta
+    $censoCarpetas = [ordered]@{
+        "Documentos\Word"              = @{ Ruta = $dirWord;         Archivos = 0; MB = 0 }
+        "Documentos\PDF"               = @{ Ruta = $dirPdf;          Archivos = 0; MB = 0 }
+        "Documentos\Excel"             = @{ Ruta = $dirExcel;        Archivos = 0; MB = 0 }
+        "Documentos\PowerPoint"        = @{ Ruta = $dirPowerPoint;   Archivos = 0; MB = 0 }
+        "Documentos\Datos Geograficos" = @{ Ruta = $dirGeo;          Archivos = 0; MB = 0 }
+        "Documentos\Instaladores"      = @{ Ruta = $dirInstaladores; Archivos = 0; MB = 0 }
+        "Imagenes"                     = @{ Ruta = $dirImagenes;     Archivos = 0; MB = 0 }
+        "Videos"                       = @{ Ruta = $dirVideos;       Archivos = 0; MB = 0 }
+    }
+    
+    $totalExistentes = 0
+    $totalExistentesBytes = 0
+    foreach ($k in $censoCarpetas.Keys) {
+        $p = $censoCarpetas[$k].Ruta
+        if (Test-Path $p) {
+            $fls = Get-ChildItem -Path $p -File -Force -ErrorAction SilentlyContinue
+            $cnt = $fls.Count
+            $bts = ($fls | Measure-Object -Property Length -Sum).Sum
+            if (-not $bts) { $bts = 0 }
+            $censoCarpetas[$k].Archivos = $cnt
+            $censoCarpetas[$k].MB = [Math]::Round($bts / 1MB, 2)
+            $totalExistentes += $cnt
+            $totalExistentesBytes += $bts
+        }
+    }
+
     $totalMB = [Math]::Round($totalBytes / 1MB, 2)
 
     # 6. Mostrar resultados en consola si no es silencioso
     if (-not $ModoSilencioso) {
         if ($totalMovidos -gt 0) {
             Write-Host "[+] Organizacion completada exitosamente:" -ForegroundColor Green
-            Write-Host "    Total de archivos clasificados: $totalMovidos ($totalMB MB)" -ForegroundColor White
+            Write-Host "    Total de archivos nuevos clasificados: $totalMovidos ($totalMB MB)" -ForegroundColor White
             Write-Host ""
-            Write-Host "  * Desglose por categorias:" -ForegroundColor Cyan
+            Write-Host "  * Nuevas descargas clasificadas:" -ForegroundColor Cyan
             foreach ($cat in $desglose.Keys) {
                 if ($desglose[$cat] -gt 0) {
-                    Write-Host "    - $($cat): $($desglose[$cat]) archivo(s)" -ForegroundColor White
+                    Write-Host "    + $($cat): $($desglose[$cat]) archivo(s)" -ForegroundColor White
                 }
             }
             Write-Host ""
-            Write-Host "  * Detalle de movimientos:" -ForegroundColor DarkCyan
-            foreach ($det in $detalles) {
-                Write-Host "    -> $det" -ForegroundColor Gray
-            }
         } else {
-            Write-Host "[+] Tu carpeta de Descargas ya se encuentra 100% limpia y organizada." -ForegroundColor Green
-            Write-Host "    Todas las carpetas y subcarpetas estan listas para recibir nuevas descargas." -ForegroundColor Gray
+            Write-Host "[+] Tu carpeta de Descargas se encuentra al dia (sin archivos sueltos en la raiz)." -ForegroundColor Green
+        }
+
+        Write-Host "  * Censo de archivos organizados por carpeta ($totalExistentes en total):" -ForegroundColor Cyan
+        foreach ($k in $censoCarpetas.Keys) {
+            $cArch = $censoCarpetas[$k].Archivos
+            $cMB = $censoCarpetas[$k].MB
+            Write-Host "    - $($k): $cArch archivo(s) ($cMB MB)" -ForegroundColor Gray
         }
         Write-Host ""
     }
 
     return [PSCustomObject]@{
-        Total    = $totalMovidos
-        Bytes    = $totalBytes
-        MB       = $totalMB
-        Desglose = $desglose
-        Detalles = $detalles
+        Total           = $totalMovidos
+        Bytes           = $totalBytes
+        MB              = $totalMB
+        Desglose        = $desglose
+        Detalles        = $detalles
+        Censo           = $censoCarpetas
+        TotalExistentes = $totalExistentes
+        MBExistentes    = [Math]::Round($totalExistentesBytes / 1MB, 2)
     }
 }
 
