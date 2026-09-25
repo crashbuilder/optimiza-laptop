@@ -16,11 +16,13 @@ namespace BatteryHubApp {
         private Label lblCapacity;
         private Label lblHealth;
         private Label lblRate;
+        private Label lblTimeEstimate;
         private ProgressBar pbBattery;
         private FlowLayoutPanel pnlDevices;
         private Label lblAdvice;
         private Panel cardAdvice;
         private Button btnRefresh;
+        private int fullCapacityMwh = 0;
 
         public MainForm() {
             InitializeUI();
@@ -71,12 +73,12 @@ namespace BatteryHubApp {
             mainContainer.Controls.Add(pnlHeader);
 
             // 2. TARJETA 1: BATERÍA DE LA LAPTOP
-            Panel cardLaptop = CreateCard(14, 48, 520, 140);
+            Panel cardLaptop = CreateCard(14, 46, 520, 146);
             Label lblCard1Title = new Label {
                 Text = "BATERÍA DE TU PORTÁTIL",
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(156, 163, 175),
-                Location = new Point(12, 8),
+                Location = new Point(12, 7),
                 AutoSize = true
             };
             cardLaptop.Controls.Add(lblCard1Title);
@@ -85,40 +87,49 @@ namespace BatteryHubApp {
                 Text = "--%",
                 Font = new Font("Segoe UI", 28f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(16, 185, 129),
-                Location = new Point(8, 24),
+                Location = new Point(8, 22),
                 AutoSize = true
             };
             cardLaptop.Controls.Add(lblPercentage);
 
             lblStatusBadge = new Label {
                 Text = "Cargando...",
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 9.2f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(240, 240, 245),
-                Location = new Point(140, 30),
+                Location = new Point(135, 23),
                 AutoSize = true
             };
             cardLaptop.Controls.Add(lblStatusBadge);
 
             lblRate = new Label {
                 Text = "Potencia: -- W",
-                Font = new Font("Segoe UI", 8.5f),
+                Font = new Font("Segoe UI", 8.3f),
                 ForeColor = Color.FromArgb(209, 213, 219),
-                Location = new Point(140, 52),
+                Location = new Point(135, 43),
                 AutoSize = true
             };
             cardLaptop.Controls.Add(lblRate);
 
+            lblTimeEstimate = new Label {
+                Text = "⏱️ Estimando tiempo...",
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(52, 211, 153),
+                Location = new Point(135, 63),
+                AutoSize = true
+            };
+            cardLaptop.Controls.Add(lblTimeEstimate);
+
             pbBattery = new ProgressBar {
-                Location = new Point(12, 82),
-                Size = new Size(494, 11),
+                Location = new Point(12, 86),
+                Size = new Size(494, 10),
                 Style = ProgressBarStyle.Continuous,
                 Value = 50
             };
             cardLaptop.Controls.Add(pbBattery);
 
-            lblPowerSource = new Label { Text = "Alimentación: --", Location = new Point(12, 102), AutoSize = true, ForeColor = Color.FromArgb(156, 163, 175), Font = new Font("Segoe UI", 8.2f) };
-            lblCapacity = new Label { Text = "Carga restante: --", Location = new Point(12, 118), AutoSize = true, ForeColor = Color.FromArgb(156, 163, 175), Font = new Font("Segoe UI", 8.2f) };
-            lblHealth = new Label { Text = "Salud: ~49% (859 ciclos)", Location = new Point(340, 118), AutoSize = true, ForeColor = Color.FromArgb(156, 163, 175), Font = new Font("Segoe UI", 8.2f) };
+            lblPowerSource = new Label { Text = "Alimentación: --", Location = new Point(12, 104), AutoSize = true, ForeColor = Color.FromArgb(156, 163, 175), Font = new Font("Segoe UI", 8.2f) };
+            lblCapacity = new Label { Text = "Carga restante: --", Location = new Point(12, 122), AutoSize = true, ForeColor = Color.FromArgb(156, 163, 175), Font = new Font("Segoe UI", 8.2f) };
+            lblHealth = new Label { Text = "Salud: ~49% (859 ciclos)", Location = new Point(310, 122), AutoSize = true, ForeColor = Color.FromArgb(156, 163, 175), Font = new Font("Segoe UI", 8.2f) };
 
             cardLaptop.Controls.Add(lblPowerSource);
             cardLaptop.Controls.Add(lblCapacity);
@@ -126,19 +137,19 @@ namespace BatteryHubApp {
             mainContainer.Controls.Add(cardLaptop);
 
             // 3. TARJETA 2: DISPOSITIVOS CONECTADOS
-            Panel cardDevices = CreateCard(14, 196, 520, 165);
+            Panel cardDevices = CreateCard(14, 198, 520, 162);
             Label lblCard2Title = new Label {
                 Text = "DISPOSITIVOS CONECTADOS AHORA (USB / BLUETOOTH)",
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(156, 163, 175),
-                Location = new Point(12, 8),
+                Location = new Point(12, 7),
                 AutoSize = true
             };
             cardDevices.Controls.Add(lblCard2Title);
 
             pnlDevices = new FlowLayoutPanel {
-                Location = new Point(10, 28),
-                Size = new Size(498, 128),
+                Location = new Point(10, 26),
+                Size = new Size(498, 126),
                 AutoScroll = true,
                 FlowDirection = FlowDirection.TopDown,
                 WrapContents = false
@@ -147,13 +158,13 @@ namespace BatteryHubApp {
             mainContainer.Controls.Add(cardDevices);
 
             // 4. TARJETA 3: ESTADO DEL SUMINISTRO USB & BATERÍAS EXTERNAS
-            cardAdvice = CreateCard(14, 368, 520, 150);
+            cardAdvice = CreateCard(14, 366, 520, 152);
             lblAdvice = new Label {
                 Text = "Analizando suministro de energía...",
                 Font = new Font("Segoe UI", 8.5f),
                 ForeColor = Color.FromArgb(243, 244, 246),
                 Location = new Point(12, 8),
-                Size = new Size(496, 134)
+                Size = new Size(496, 136)
             };
             cardAdvice.Controls.Add(lblAdvice);
             mainContainer.Controls.Add(cardAdvice);
@@ -161,7 +172,7 @@ namespace BatteryHubApp {
             // 5. BOTÓN ACTUALIZAR
             btnRefresh = new Button {
                 Text = "🔄 Actualizar Datos Ahora",
-                Location = new Point(14, 526),
+                Location = new Point(14, 524),
                 Size = new Size(520, 36),
                 BackColor = Color.FromArgb(37, 99, 235),
                 ForeColor = Color.White,
@@ -186,6 +197,17 @@ namespace BatteryHubApp {
                 }
             };
             return card;
+        }
+
+        private string FormatTimeSpan(int totalMinutes) {
+            if (totalMinutes <= 0) return "0 min";
+            int hours = totalMinutes / 60;
+            int mins = totalMinutes % 60;
+            if (hours > 0) {
+                return string.Format("{0} h {1:D2} min", hours, mins);
+            } else {
+                return string.Format("{0} min", mins);
+            }
         }
 
         private void RefreshData() {
@@ -228,27 +250,84 @@ namespace BatteryHubApp {
                     }
                 } catch {}
 
+                if (fullCapacityMwh <= 0) {
+                    try {
+                        using (var searcherFull = new ManagementObjectSearcher("root\\wmi", "SELECT FullChargedCapacity FROM BatteryFullChargedCapacity")) {
+                            foreach (ManagementObject obj in searcherFull.Get()) {
+                                object fc = obj["FullChargedCapacity"];
+                                if (fc != null) fullCapacityMwh = Convert.ToInt32(fc);
+                            }
+                        }
+                    } catch {}
+                    if (fullCapacityMwh <= 0) {
+                        fullCapacityMwh = 15650;
+                    }
+                }
+
+                // Cálculo de tiempo restante (desconectado) o tiempo para completar carga (conectado)
+                int timeMinutes = -1;
                 if (isOnline) {
                     lblStatusBadge.Text = "⚡ CONECTADO AL CARGADOR (RED CA)";
                     lblStatusBadge.ForeColor = Color.FromArgb(16, 185, 129);
                     lblPowerSource.Text = "Alimentación: Enchufe de pared (CA)";
-                    if (rateWatts > 0) {
-                        lblRate.Text = string.Format("Tasa de Carga de la Laptop: +{0:F1} Watts", rateWatts);
-                    } else {
+
+                    if (percent >= 100) {
                         lblRate.Text = "Batería completa (100%) en flotación.";
+                        lblTimeEstimate.Text = "⏱️ Carga completa (100%) - Batería llena";
+                        lblTimeEstimate.ForeColor = Color.FromArgb(52, 211, 153);
+                        timeMinutes = 0;
+                    } else if (rateWatts > 0.05) {
+                        lblRate.Text = string.Format("Tasa de Carga de la Laptop: +{0:F1} Watts", rateWatts);
+                        int neededMwh = Math.Max(0, fullCapacityMwh - remCapacity);
+                        if (neededMwh <= 0 && percent < 100) {
+                            neededMwh = (int)(fullCapacityMwh * (100.0 - percent) / 100.0);
+                        }
+                        timeMinutes = (int)Math.Round(((double)neededMwh / (rateWatts * 1000.0)) * 60.0);
+                        if (timeMinutes < 1) timeMinutes = 1;
+                        lblTimeEstimate.Text = string.Format("⏱️ Falta para carga completa: ~{0}", FormatTimeSpan(timeMinutes));
+                        lblTimeEstimate.ForeColor = Color.FromArgb(52, 211, 153);
+                    } else {
+                        if (percent >= 98) {
+                            lblRate.Text = "Batería completa (~100%) en reposo.";
+                            lblTimeEstimate.Text = "⏱️ Batería al 100% - Modo conservación/flotación";
+                            lblTimeEstimate.ForeColor = Color.FromArgb(52, 211, 153);
+                            timeMinutes = 0;
+                        } else {
+                            lblRate.Text = "Conectado a la corriente (esperando flujo).";
+                            lblTimeEstimate.Text = "⏱️ Conectado (Calculando tiempo de carga...)";
+                            lblTimeEstimate.ForeColor = Color.FromArgb(156, 163, 175);
+                        }
                     }
                 } else {
                     lblStatusBadge.Text = "🔋 EN BATERÍA (DESCONECTADO)";
                     lblStatusBadge.ForeColor = Color.FromArgb(245, 158, 11);
                     lblPowerSource.Text = "Alimentación: Batería interna (CC)";
-                    if (rateWatts > 0) {
+
+                    if (rateWatts > 0.05) {
                         lblRate.Text = string.Format("Consumo total del sistema y puertos: -{0:F1} Watts", rateWatts);
+                        if (remCapacity > 0) {
+                            timeMinutes = (int)Math.Round(((double)remCapacity / (rateWatts * 1000.0)) * 60.0);
+                        }
                     } else {
                         lblRate.Text = "Modo batería activo.";
                     }
+
+                    if (timeMinutes <= 0 && ps.BatteryLifeRemaining > 0 && ps.BatteryLifeRemaining < 86400) {
+                        timeMinutes = ps.BatteryLifeRemaining / 60;
+                    }
+
+                    if (timeMinutes > 0) {
+                        lblTimeEstimate.Text = string.Format("⏱️ Tiempo restante de batería: ~{0}", FormatTimeSpan(timeMinutes));
+                        lblTimeEstimate.ForeColor = (percent > 20) ? Color.FromArgb(251, 191, 36) : Color.FromArgb(239, 68, 68);
+                    } else {
+                        lblTimeEstimate.Text = "⏱️ Estimando tiempo restante de batería...";
+                        lblTimeEstimate.ForeColor = Color.FromArgb(156, 163, 175);
+                    }
                 }
 
-                if (remCapacity > 0) {
+                if (remCapacity > 0 && fullCapacityMwh > 0) {
+                    lblCapacity.Text = string.Format("Capacidad: {0:F1} / {1:F1} Wh", remCapacity / 1000.0, fullCapacityMwh / 1000.0);
+                } else if (remCapacity > 0) {
                     lblCapacity.Text = string.Format("Carga restante: {0:F1} Wh", remCapacity / 1000.0);
                 } else {
                     lblCapacity.Text = "Capacidad actual: ~12.0 Wh";
@@ -282,27 +361,47 @@ namespace BatteryHubApp {
                     if (isOnline) {
                         cardAdvice.BackColor = Color.FromArgb(20, 36, 28);
                         lblAdvice.ForeColor = Color.FromArgb(167, 243, 208);
+                        string timeInfo = (timeMinutes > 0)
+                            ? string.Format("• Tiempo estimado para carga completa (100%): ~{0} (suministro a +{1:F1} W).\n", FormatTimeSpan(timeMinutes), rateWatts)
+                            : (percent >= 98 ? "• La batería está al 100% o en flotación continua.\n" : "• Calculando tiempo de carga...\n");
+
                         lblAdvice.Text = "✅ ALIMENTACIÓN POR RED ELÉCTRICA (CARGADOR CONECTADO)\n\n" +
+                                         timeInfo +
                                          "• Tu laptop está conectada a la corriente y la batería se mantiene protegida.\n" +
                                          "• Puedes conectar cualquier accesorio o celular a los puertos USB sin degradar tu batería interna.";
                     } else {
                         cardAdvice.BackColor = Color.FromArgb(28, 32, 42);
                         lblAdvice.ForeColor = Color.FromArgb(209, 213, 219);
-                        lblAdvice.Text = "🔋 TRABAJANDO EN BATERÍA (CONSUMO PROPIO DEL SISTEMA)\n\n" +
+                        string timeInfo = (timeMinutes > 0)
+                            ? string.Format("• Tiempo estimado de duración restante: ~{0} de autonomía con el consumo actual.\n", FormatTimeSpan(timeMinutes))
+                            : "• Estimando tiempo restante de batería...\n";
+
+                        lblAdvice.Text = "🔋 TRABAJANDO EN BATERÍA (DESCONECTADO DE LA RED)\n\n" +
+                                         timeInfo +
                                          string.Format("• Consumo actual de la laptop: ~{0:F1} Watts (pantalla, procesador y memoria).\n", rateWatts > 0 ? rateWatts : 9.1) +
                                          "• No hay dispositivos externos drenando energía de tu equipo.\n" +
-                                         "• Consejo: Para ahorrar batería fuera de casa, puedes reducir el brillo de la pantalla o activar el Modo SuperEco.";
+                                         "• Consejo: Para ahorrar batería fuera de casa, reduce el brillo de la pantalla o activa el Modo SuperEco.";
                     }
                 } else {
                     if (isOnline) {
                         cardAdvice.BackColor = Color.FromArgb(20, 36, 28);
                         lblAdvice.ForeColor = Color.FromArgb(167, 243, 208);
+                        string timeInfo = (timeMinutes > 0)
+                            ? string.Format("• Tiempo estimado para carga completa (100%): ~{0}.\n", FormatTimeSpan(timeMinutes))
+                            : (percent >= 98 ? "• Batería al 100% en reposo.\n" : "• Calculando tiempo de carga...\n");
+
                         lblAdvice.Text = string.Format("✅ ESTACIÓN DE CARGA ACTIVA ({0} DISPOSITIVO{1})\n\n", devices.Count, devices.Count > 1 ? "S" : "") +
+                                         timeInfo +
                                          "• La laptop está enchufada a la pared. Los dispositivos conectados se alimentan directamente de la red eléctrica sin desgastar tu batería interna.";
                     } else {
                         cardAdvice.BackColor = Color.FromArgb(44, 26, 16);
                         lblAdvice.ForeColor = Color.FromArgb(254, 215, 170);
+                        string timeInfo = (timeMinutes > 0)
+                            ? string.Format("• Tiempo estimado de duración restante: ~{0} de autonomía.\n", FormatTimeSpan(timeMinutes))
+                            : "• Estimando tiempo restante de batería...\n";
+
                         lblAdvice.Text = "⚠️ AVISO: DISPOSITIVOS ALIMENTADOS POR LA BATERÍA\n\n" +
+                                         timeInfo +
                                          string.Format("• Tienes {0} dispositivo(s) conectado(s) que están consumiendo energía de la batería de tu portátil.\n", devices.Count) +
                                          "• Si necesitas que tu laptop dure más tiempo encendida, desconéctalos o enchufa tu cargador a la pared.";
                     }
